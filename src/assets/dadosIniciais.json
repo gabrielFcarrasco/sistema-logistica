@@ -1,0 +1,112 @@
+[
+  {
+    "nome": "ALLTEC CARTUCHO CMC-1 VO+ GA",
+    "categoria": "Proteção Respiratória",
+    "setor": "Pintura",
+    "quantidade": 6,
+    "valorUnitario": 22.08,
+    "ncm": "84213990",
+    "unidade": "UN",
+    "marca": "ALLTEC"
+  },
+  {
+    "nome": "ALLTEC MÁSCARA 1/4 MODELO 2002",
+    "categoria": "Proteção Respiratória",
+    "setor": "Pintura",
+    "quantidade": 2,
+    "valorUnitario": 17.60,
+    "ncm": "90200010",
+    "unidade": "UN",
+    "marca": "ALLTEC"
+  },
+  {
+    "nome": "CAMPER MÁSCARA RESPIRATÓRIA PFF2 COM VÁLVULA",
+    "categoria": "Proteção Respiratória",
+    "setor": "Pintura",
+    "quantidade": 50,
+    "valorUnitario": 1.63,
+    "referencia": "800366",
+    "ca": "38944",
+    "marca": "CAMPER",
+    "ncm": "63079010",
+    "unidade": "UN"
+  },
+  {
+    "nome": "DANNY LUVA NEOLATEX TAM G DA-224D",
+    "categoria": "Proteção das Mãos",
+    "setor": "Funilaria",
+    "quantidade": 6,
+    "valorUnitario": 10.39,
+    "ncm": "40151900",
+    "unidade": "PAR",
+    "marca": "DANNY"
+  },
+  {
+    "nome": "NEXT SAFETY LUVA KINO TATO MODELO 25.000 TAMANHO G",
+    "categoria": "Proteção das Mãos",
+    "setor": "Montagem",
+    "quantidade": 6,
+    "valorUnitario": 3.55,
+    "referencia": "25.000/G",
+    "ca": "9567",
+    "marca": "NEXT SAFETY",
+    "ncm": "40151900",
+    "unidade": "PAR"
+  },
+  {
+    "nome": "NEXT SAFETY LUVA NITRÍLICA PURACHEM VERDE 11.200 TAMANHO G",
+    "categoria": "Proteção das Mãos",
+    "setor": "Pintura",
+    "quantidade": 6,
+    "valorUnitario": 9.19,
+    "referencia": "11200/G",
+    "ca": "9567",
+    "marca": "NEXT SAFETY",
+    "ncm": "40151900",
+    "unidade": "PAR"
+  },
+  {
+    "nome": "PROTECT PROTETOR AURICULAR GRAU FARMACÊUTICO 18DB",
+    "categoria": "Proteção Auditiva",
+    "setor": "Funilaria",
+    "quantidade": 6,
+    "valorUnitario": 1.95,
+    "ca": "28534",
+    "marca": "PROTECT QUALITY",
+    "ncm": "39269090",
+    "unidade": "UN"
+  },
+  {
+    "nome": "STEELFLEX CINTA ERGONOMICA ERGON LYCRA ERCE9011 G",
+    "categoria": "Ergonomia",
+    "setor": "Estoque Geral",
+    "quantidade": 3,
+    "valorUnitario": 45.40,
+    "referencia": "STF-ERCE9",
+    "marca": "STEELFLEX",
+    "ncm": "63072000",
+    "unidade": "UN"
+  },
+  {
+    "nome": "VICSA MACACÃO DE SEGURANCA BRANCO VIC85111 XXG",
+    "categoria": "Vestimenta",
+    "setor": "Pintura",
+    "quantidade": 25,
+    "valorUnitario": 13.56,
+    "ca": "20662",
+    "marca": "VICSA",
+    "ncm": "62101000",
+    "unidade": "UN"
+  },
+  {
+    "nome": "VICSA MACACÃO DE SEGURANCA BRANCO VIC85111 XXXG",
+    "categoria": "Vestimenta",
+    "setor": "Pintura",
+    "quantidade": 25,
+    "valorUnitario": 13.56,
+    "ca": "20662",
+    "marca": "VICSA",
+    "ncm": "62101000",
+    "unidade": "UN"
+  }
+]

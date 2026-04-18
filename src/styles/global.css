@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Paleta de Cores baseada no seu Design */
+  --cor-fundo: #f4f7fb;       /* Fundo geral das telas */
+  --cor-sidebar: #222b3e;     /* Azul muito escuro do menu lateral */
+  --cor-sidebar-hover: #323d53; /* Cor do botão do menu ao passar o mouse */
+  --cor-primaria: #2d68f8;    /* Azul vibrante dos botões (Entrar, etc) */
+  --cor-texto-escuro: #1e293b;/* Títulos e textos principais */
+  --cor-texto-claro: #64748b; /* Textos de apoio e rótulos */
+  --cor-branco: #ffffff;
+  
+  /* Cores de Alerta */
+  --cor-sucesso: #10b981;
+  --cor-alerta: #f59e0b;
+  --cor-erro: #ef4444;
+
+  /* Sombras Padrão dos Cartões */
+  --sombra-card: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+/* Reset básico para tirar margens indesejadas */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Inter', sans-serif;
+}
+
+body {
+  background-color: var(--cor-fundo);
+  color: var(--cor-texto-escuro);
+}
