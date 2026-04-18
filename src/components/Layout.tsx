@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
-import logoCarvalho from '../assets/logoLimpa.webp'; // Verifique se o nome confere
+import logoCarvalho from '../assets/logo.webp'; // Verifique se o nome confere
 import styles from './Layout.module.css';
 import { LayoutDashboard, Package, Users, ClipboardCheck, LogOut, Building2, Menu, X } from 'lucide-react';
 
