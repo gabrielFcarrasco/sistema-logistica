@@ -225,5 +225,4 @@ const infoStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f8fafc', padding: '8px', borderRadius: '8px', border: '1px solid #f1f5f9'
 };
 
-// Pequenos ajustes de tipografia nos cards
 const valueStyle = { fontSize: '12px', fontWeight: 'bold', margin: 0, color: '#334155' };

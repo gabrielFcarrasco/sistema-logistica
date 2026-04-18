@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 // 1. Adicionamos 'icone' nas propriedades que o componente aceita
 interface StatCardProps {

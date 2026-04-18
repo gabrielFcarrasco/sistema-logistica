@@ -50,10 +50,10 @@ export default function Dashboard() {
         <Saudacao />
         
         <Button 
-          onClick={() => setMostrarConfig(!mostrarConfig)} 
-          variante="secundario" 
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'white', color: '#64748b', border: '1px solid #e2e8f0' }}
-        >
+  onClick={() => setMostrarConfig(!mostrarConfig)} 
+  variante="primario" 
+  style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'white', color: '#64748b', border: '1px solid #e2e8f0' }}
+>
           <Settings size={18} /> {mostrarConfig ? 'Fechar Configurações' : 'Gerenciar Unidades'}
         </Button>
       </div>

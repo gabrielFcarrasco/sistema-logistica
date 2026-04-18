@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, ReactNode } from 'react';
+import type { InputHTMLAttributes, ReactNode } from 'react';
 import styles from './Input.module.css';
 
 // A interface herda tudo de um input padrão e adiciona "label" e "icone"
