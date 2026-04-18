@@ -5,7 +5,7 @@ import { auth } from '../services/firebase';
 
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input'; // Importando nosso novo componente
-import logoCarvalho from '../assets/logoLimpa.webp';
+import logoCarvalho from '../assets/LogoLimpa.webp';
 import styles from './Login.module.css';
 
 // Importando os ícones SVG!
