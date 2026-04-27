@@ -26,12 +26,13 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // --- 🕵️‍♂️ MODO DEV (AUTENTICADOR NÍVEL DEV) ---
+            // --- 🕵️‍♂️ MODO DEV (AUTENTICADOR NÍVEL DEV) ---
       // Puxa as chaves do seu arquivo .env
       const senhaDev = import.meta.env.VITE_DEV_PASS;
       const nomeDev = import.meta.env.VITE_DEV_USER_NAME;
 
-      if (senha === senhaDev && senhaDev !== undefined) {
+      // AGORA ELE VERIFICA SE O USUÁRIO DIGITADO É "dev" E A SENHA É A DO .ENV
+      if (usuario === 'dev' && senha === senhaDev && senhaDev !== undefined) {
         // Sucesso instantâneo: Loga como Sócio sem consultar o Firebase
         localStorage.setItem('userLevel', 'socio');
         localStorage.setItem('userName', nomeDev || 'Admin Dev');
