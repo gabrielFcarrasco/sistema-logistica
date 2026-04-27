@@ -10,9 +10,8 @@ import { db } from '../services/firebase';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { 
-  Building2, ClipboardSignature, CheckCircle2, AlertCircle, 
-  PenTool, Eraser, Plus, ShoppingCart, Trash2, Package, X, Check, 
-  Timer, AlertTriangle, Shirt 
+  ClipboardSignature, CheckCircle2, AlertCircle, 
+  PenTool, Plus, ShoppingCart, Trash2, X, AlertTriangle, Shirt 
 } from 'lucide-react';
 
 interface ItemCarrinho {
@@ -70,10 +69,11 @@ export default function Entrega() {
   // 1. Carrega Funcionários e Estoque
   useEffect(() => {
     if (!setorAtivo) return;
-    onSnapshot(query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo)), (snap) => setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    onSnapshot(query(collection(db, 'estoque'), where('setorId', '==', setorAtivo)), (snap) => {
+    const unsubFunc = onSnapshot(query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo)), (snap) => setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubEstoque = onSnapshot(query(collection(db, 'estoque'), where('setorId', '==', setorAtivo)), (snap) => {
       setEstoque(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((i: any) => i.quantidade > 0));
     });
+    return () => { unsubFunc(); unsubEstoque(); }
   }, [setorAtivo]);
 
   // 2. Busca Pendências de Uniformes quando seleciona o funcionário
@@ -99,7 +99,7 @@ export default function Entrega() {
     }
   }, [itemSelecionado, estoque]);
 
-  // 🪄 LÓGICA DO VIGIA: Conta 1 dia se passaram 7 horas (Turno de entrada)
+  // 🪄 LÓGICA DO VIGIA
   const calcularDiasDeUso = (dataAnterior: Date) => {
     const agora = new Date();
     const diffMs = agora.getTime() - dataAnterior.getTime();
@@ -111,11 +111,12 @@ export default function Entrega() {
 
   const verificarEAdicionar = async () => {
     if (!funcionarioSelecionado || !itemSelecionado) return avisar("Selecione funcionário e material.", "erro");
+    if (Number(quantidadeDesejada) <= 0) return avisar("A quantidade deve ser maior que zero.", "erro");
     
     const itemData = estoque.find(i => i.id === itemSelecionado);
     const durabilidadeDesejada = Number(durabilidadeManual) || 0;
 
-    // Busca última entrega deste item para este funcionário
+    // Busca última entrega
     const q = query(
       collection(db, 'entregas'),
       where('funcionarioId', '==', funcionarioSelecionado),
@@ -127,18 +128,21 @@ export default function Entrega() {
     const snap = await getDocs(q);
     if (!snap.empty) {
       const ultima = snap.docs[0].data();
-      const dataUltima = ultima.dataHora.toDate();
-      const diasUso = calcularDiasDeUso(dataUltima);
-      const durabilidadePrevista = ultima.durabilidade || 0;
+      const dataUltima = ultima.dataHora?.toDate();
+      
+      if (dataUltima) {
+        const diasUso = calcularDiasDeUso(dataUltima);
+        const durabilidadePrevista = ultima.durabilidade || 0;
 
-      if (diasUso < durabilidadePrevista) {
-        setItemPendenteJustificativa({
-          ...itemData, diasPassados: diasUso, durabilidadePrevista,
-          quantidade: quantidadeDesejada, dur: durabilidadeDesejada,
-          dataAnterior: dataUltima.toLocaleDateString('pt-BR'),
-          horaAnterior: dataUltima.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        });
-        return;
+        if (durabilidadePrevista > 0 && diasUso < durabilidadePrevista) {
+          setItemPendenteJustificativa({
+            ...itemData, diasPassados: diasUso, durabilidadePrevista,
+            quantidade: quantidadeDesejada, dur: durabilidadeDesejada,
+            dataAnterior: dataUltima.toLocaleDateString('pt-BR'),
+            horaAnterior: dataUltima.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          });
+          return;
+        }
       }
     }
     adicionarAoCarrinho(itemData, durabilidadeDesejada);
@@ -148,14 +152,19 @@ export default function Entrega() {
     setCarrinho([...carrinho, { 
       id: itemData.id || `p-${Date.now()}`, 
       nome: itemData.nome || itemData.itemNome, 
-      quantidade: Number(quantidadeDesejada) || 1, 
+      quantidade: Number(itemData.quantidade || quantidadeDesejada) || 1, 
       durabilidade: dur,
       justificativa: just,
       isPendencia,
       pendenciaId: pendId
     }]);
-    setItemSelecionado(''); setDurabilidadeManual(''); setQuantidadeDesejada('1');
-    setItemPendenteJustificativa(null); setJustificativaSelecionada('');
+    
+    // Reseta os campos para o próximo item
+    setItemSelecionado(''); 
+    setDurabilidadeManual(''); 
+    setQuantidadeDesejada('1');
+    setItemPendenteJustificativa(null); 
+    setJustificativaSelecionada('');
   };
 
   const finalizarEntregaTotal = async () => {
@@ -165,7 +174,6 @@ export default function Entrega() {
       const horarioAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       
       for (const item of carrinho) {
-        // Grava a entrega com o horário automático
         await addDoc(collection(db, 'entregas'), {
           setorId: setorAtivo,
           funcionarioId: funcionarioSelecionado,
@@ -203,10 +211,14 @@ export default function Entrega() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
-    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-    ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    
+    // Evita bug de redimensionamento
+    setTimeout(() => {
+      canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+      canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    }, 100);
     
     const getPos = (e: any) => {
       const rect = canvas.getBoundingClientRect();
@@ -227,8 +239,25 @@ export default function Entrega() {
     };
   }, [modalAssinaturaAberto, estaDesenhando]);
 
+  const limparAssinatura = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx && canvas) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setAssinaturaBase64('');
+    }
+  };
+
+  const confirmarAssinatura = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      setAssinaturaBase64(canvas.toDataURL('image/png'));
+      setModalAssinaturaAberto(false);
+    }
+  };
+
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '10px' }}>
+    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '15px' }}>
       
       {/* Notificação Toast */}
       {notificacao && (
@@ -244,73 +273,101 @@ export default function Entrega() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
           {/* 1. FUNCIONÁRIO E PENDÊNCIAS */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>RECEBEDOR</label>
-            <select value={funcionarioSelecionado} onChange={e => setFuncionarioSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
+            <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>RECEBEDOR *</label>
+            <select value={funcionarioSelecionado} onChange={e => setFuncionarioSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', outline: 'none' }}>
               <option value="">Selecione o colaborador...</option>
               {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
             </select>
 
             {pendenciasFuncionario.length > 0 && (
-              <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', animation: 'pulse 2s infinite' }}>
+              <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9a3412', marginBottom: '10px' }}>
                   <Shirt size={20} /> <strong style={{fontSize: '12px'}}>UNIFORME(S) DISPONÍVEL!</strong>
                 </div>
                 {pendenciasFuncionario.map(p => (
-                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '8px 12px', borderRadius: '6px', marginBottom: '5px', border: '1px solid #fed7aa' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 'bold' }}>{p.itemNome} ({p.tamanho})</span>
-                    <button onClick={() => adicionarAoCarrinho(p, 180, 'Entrega de Pedido Especial', true, p.id)} style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>Incluir</button>
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '10px 12px', borderRadius: '6px', marginBottom: '5px', border: '1px solid #fed7aa' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{p.itemNome} ({p.tamanho})</span>
+                    <button onClick={() => adicionarAoCarrinho(p, 180, 'Entrega de Pedido Especial', true, p.id)} style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>Incluir</button>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* 2. ADIÇÃO DE ITEM GERAL */}
+          {/* 2. ADIÇÃO DE ITEM GERAL (Correção de Layout aqui) */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
             <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>ITEM DO ESTOQUE</label>
-            <select value={itemSelecionado} onChange={e => setItemSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
+            
+            <select value={itemSelecionado} onChange={e => setItemSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', marginBottom: '15px', outline: 'none' }}>
               <option value="">Buscar material...</option>
-              {estoque.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.quantidade} un)</option>)}
+              {estoque.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.quantidade} em estoque)</option>)}
             </select>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr auto', gap: '10px', marginTop: '10px' }}>
-              <Input label="Qtd" type="number" value={quantidadeDesejada} onChange={e => setQuantidadeDesejada(e.target.value)} />
-              <Input label="Vida Útil (Dias)" type="number" value={durabilidadeManual} onChange={e => setDurabilidadeManual(e.target.value)} placeholder="Ex: 15" />
-              <Button onClick={verificarEAdicionar} style={{ backgroundColor: '#3b82f6', alignSelf: 'end', height: '46px' }}><Plus size={24} /></Button>
+            
+            {/* Usando Flexbox em vez de Grid para garantir que o botão não encolha */}
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+              <div style={{ flex: '1' }}>
+                <Input label="Qtd" type="number" value={quantidadeDesejada} onChange={e => setQuantidadeDesejada(e.target.value)} />
+              </div>
+              <div style={{ flex: '1.5' }}>
+                <Input label="Durabilidade" type="number" value={durabilidadeManual} onChange={e => setDurabilidadeManual(e.target.value)} placeholder="Dias" />
+              </div>
+              <Button onClick={verificarEAdicionar} style={{ backgroundColor: '#3b82f6', height: '48px', padding: '0 20px', flexShrink: 0 }}>
+                <Plus size={24} />
+              </Button>
             </div>
           </div>
 
-          {/* 3. RESUMO DO LOTE */}
+          {/* 3. RESUMO DO LOTE (O "Carrinho") */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ShoppingCart size={18} /> Resumo do Lote ({carrinho.length})
+            <h3 style={{ fontSize: '15px', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#1e293b' }}>
+              <ShoppingCart size={18} color="#3b82f6" /> Materiais Separados ({carrinho.length})
             </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {carrinho.map((item, idx) => (
-                <div key={idx} style={{ padding: '12px', borderBottom: '1px solid #f1f5f9', backgroundColor: item.justificativa ? '#fff7ed' : (item.isPendencia ? '#f0f9ff' : 'transparent'), borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <strong style={{ fontSize: '14px', display: 'block' }}>{item.nome} x{item.quantidade}</strong>
-                    <span style={{ fontSize: '11px', color: item.justificativa ? '#f97316' : '#64748b' }}>
-                      {item.justificativa ? `⚠️ ${item.justificativa}` : (item.isPendencia ? '📦 Pedido Especial' : `Dura: ${item.durabilidade} dias`)}
-                    </span>
+            
+            {carrinho.length === 0 ? (
+              <p style={{ color: '#94a3b8', fontSize: '14px', textAlign: 'center', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                Nenhum item adicionado à entrega.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {carrinho.map((item, idx) => (
+                  <div key={idx} style={{ padding: '12px', border: '1px solid #e2e8f0', backgroundColor: item.justificativa ? '#fff7ed' : (item.isPendencia ? '#f0f9ff' : '#ffffff'), borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <strong style={{ fontSize: '14px', display: 'block', color: '#1e293b' }}>{item.nome} (x{item.quantidade})</strong>
+                      <span style={{ fontSize: '12px', color: item.justificativa ? '#ea580c' : '#64748b', display: 'block', marginTop: '2px' }}>
+                        {item.justificativa ? `⚠️ Motivo: ${item.justificativa}` : (item.isPendencia ? '📦 Pedido Especial' : `Dura aprox: ${item.durabilidade} dias`)}
+                      </span>
+                    </div>
+                    <button onClick={() => setCarrinho(carrinho.filter((_, i) => i !== idx))} style={{ color: '#ef4444', background: '#fef2f2', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Trash2 size={18} />
+                    </button>
                   </div>
-                  <button onClick={() => setCarrinho(carrinho.filter((_, i) => i !== idx))} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={18} /></button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         {/* 4. CONFIRMAÇÃO E ASSINATURA */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <h3 style={{ fontSize: '16px', color: '#1e293b' }}>Recibo Digital</h3>
+          <h3 style={{ fontSize: '16px', color: '#1e293b', margin: 0 }}>Recibo e Assinatura</h3>
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>A assinatura confirma o recebimento dos itens listados acima.</p>
+          
           <div onClick={() => setModalAssinaturaAberto(true)} style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', backgroundColor: '#f8fafc', overflow: 'hidden' }}>
-            {assinaturaBase64 ? <img src={assinaturaBase64} style={{ maxHeight: '100%' }} /> : 
-            <div style={{ textAlign: 'center', color: '#64748b' }}><PenTool size={40} /><p style={{ fontSize: '14px', marginTop: '10px' }}>Toque para Assinar em Tela Cheia</p></div>}
+            {assinaturaBase64 ? (
+              <img src={assinaturaBase64} style={{ maxHeight: '100%', maxWidth: '100%' }} /> 
+            ) : (
+              <div style={{ textAlign: 'center', color: '#64748b' }}>
+                <PenTool size={40} style={{ margin: '0 auto' }} />
+                <p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Toque para Assinar</p>
+              </div>
+            )}
           </div>
-          <Button disabled={salvando || !assinaturaBase64 || carrinho.length === 0} onClick={finalizarEntregaTotal} style={{ height: '60px', fontSize: '18px', fontWeight: 'bold', backgroundColor: assinaturaBase64 && carrinho.length > 0 ? '#10b981' : '#94a3b8' }}>
-            {salvando ? 'Processando...' : 'FINALIZAR ENTREGA'}
+
+          <Button disabled={salvando || !assinaturaBase64 || carrinho.length === 0} onClick={finalizarEntregaTotal} style={{ height: '60px', fontSize: '16px', fontWeight: 'bold', backgroundColor: assinaturaBase64 && carrinho.length > 0 ? '#10b981' : '#94a3b8' }}>
+            {salvando ? 'PROCESSANDO...' : 'FINALIZAR E SALVAR'}
           </Button>
         </div>
       </div>
@@ -323,23 +380,23 @@ export default function Entrega() {
               <div style={{ backgroundColor: '#fff7ed', width: '70px', height: '70px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px' }}>
                 <AlertTriangle size={40} color="#f97316" />
               </div>
-              <h2 style={{ fontSize: '20px', color: '#1e293b', margin: 0 }}>Troca Antecipada Detectada</h2>
+              <h2 style={{ fontSize: '20px', color: '#1e293b', margin: 0 }}>Troca Antecipada</h2>
               <p style={{ fontSize: '14px', color: '#64748b', marginTop: '10px', lineHeight: '1.5' }}>
                 Última entrega: <strong>{itemPendenteJustificativa.dataAnterior} às {itemPendenteJustificativa.horaAnterior}</strong>.<br/>
-                O item foi usado por <strong>{itemPendenteJustificativa.diasPassados} dias</strong>, mas deveria durar <strong>{itemPendenteJustificativa.durabilidadePrevista} dias</strong>.
+                Usado por <strong>{itemPendenteJustificativa.diasPassados} dias</strong>, deveria durar <strong>{itemPendenteJustificativa.durabilidadePrevista} dias</strong>.
               </p>
             </div>
 
-            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '10px' }}>POR QUE O ITEM ESTÁ SENDO REPOSTO AGORA?</label>
+            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '10px' }}>QUAL O MOTIVO DA TROCA?</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
               {JUSTIFICATIVAS_PADRAO.map(j => (
-                <button key={j} onClick={() => setJustificativaSelecionada(j)} style={{ textAlign: 'left', padding: '14px', borderRadius: '10px', border: justificativaSelecionada === j ? '2px solid #f97316' : '1px solid #e2e8f0', backgroundColor: justificativaSelecionada === j ? '#fff7ed' : 'white', fontSize: '14px', fontWeight: justificativaSelecionada === j ? 'bold' : 'normal', transition: '0.2s' }}>{j}</button>
+                <button key={j} onClick={() => setJustificativaSelecionada(j)} style={{ textAlign: 'left', padding: '14px', borderRadius: '10px', border: justificativaSelecionada === j ? '2px solid #f97316' : '1px solid #e2e8f0', backgroundColor: justificativaSelecionada === j ? '#fff7ed' : 'white', fontSize: '14px', fontWeight: justificativaSelecionada === j ? 'bold' : 'normal', transition: '0.2s', cursor: 'pointer' }}>{j}</button>
               ))}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '30px' }}>
               <Button onClick={() => setItemPendenteJustificativa(null)} style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>Cancelar</Button>
-              <Button onClick={() => adicionarAoCarrinho(itemPendenteJustificativa, itemPendenteJustificativa.dur, justificativaSelecionada)} disabled={!justificativaSelecionada} style={{ backgroundColor: '#f97316' }}>Confirmar Troca</Button>
+              <Button onClick={() => adicionarAoCarrinho(itemPendenteJustificativa, itemPendenteJustificativa.dur, justificativaSelecionada)} disabled={!justificativaSelecionada} style={{ backgroundColor: '#f97316' }}>Autorizar</Button>
             </div>
           </div>
         </div>
@@ -348,30 +405,29 @@ export default function Entrega() {
       {/* --- MODAL DE ASSINATURA TELA CHEIA --- */}
       {modalAssinaturaAberto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'white', zIndex: 10000, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
-            <h2 style={{ fontSize: '18px', margin: 0, fontWeight: '800' }}>ASSINATURA DO COLABORADOR</h2>
-            <button onClick={() => setModalAssinaturaAberto(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={24} /></button>
+          
+          <div style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
+            <h2 style={{ fontSize: '18px', margin: 0, fontWeight: '800', color: '#1e293b' }}>Assinatura do Colaborador</h2>
+            <button onClick={() => setModalAssinaturaAberto(false)} style={{ background: '#e2e8f0', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={20} color="#475569" /></button>
           </div>
-          <div style={{ flex: 1, position: 'relative', backgroundColor: '#fcfcfc', overflow: 'hidden' }}>
-            <canvas ref={canvasRef} style={{ width: '100%', height: '100%', touchAction: 'none' }} />
-            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#f1f5f9', pointerEvents: 'none', zIndex: 0, fontSize: '50px', fontWeight: '900', letterSpacing: '10px' }}>ASSINE AQUI</div>
+
+          <div style={{ flex: 1, position: 'relative', touchAction: 'none' }}>
+            <canvas ref={canvasRef} style={{ width: '100%', height: '100%', cursor: 'crosshair', display: 'block' }} />
+            {!estaDesenhando && (
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', opacity: 0.2, textAlign: 'center' }}>
+                <PenTool size={60} style={{ margin: '0 auto' }} />
+                <p style={{ fontSize: '18px', fontWeight: 'bold' }}>Assine Aqui</p>
+              </div>
+            )}
           </div>
-          <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', borderTop: '1px solid #e2e8f0', backgroundColor: 'white' }}>
-            <Button onClick={() => {
-              const ctx = canvasRef.current?.getContext('2d');
-              ctx?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
-              setAssinaturaBase64('');
-            }} style={{ backgroundColor: '#f1f5f9', color: '#475569', height: '50px' }}><Eraser size={20} /> LIMPAR</Button>
-            <Button onClick={() => {
-              if (canvasRef.current) { setAssinaturaBase64(canvasRef.current.toDataURL()); setModalAssinaturaAberto(false); }
-            }} style={{ backgroundColor: '#10b981', height: '50px' }}><Check size={20} /> CONFIRMAR</Button>
+
+          <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '15px', backgroundColor: '#f8fafc' }}>
+            <Button onClick={limparAssinatura} style={{ flex: 1, height: '50px', backgroundColor: '#f1f5f9', color: '#475569', fontSize: '15px', border: '1px solid #cbd5e1' }}>Limpar</Button>
+            <Button onClick={confirmarAssinatura} style={{ flex: 2, height: '50px', backgroundColor: '#10b981', fontSize: '15px', fontWeight: 'bold' }}>Confirmar</Button>
           </div>
         </div>
       )}
 
-      <style>{`
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
-      `}</style>
     </div>
   );
 }
