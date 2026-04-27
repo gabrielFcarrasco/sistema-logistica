@@ -56,8 +56,8 @@ export default function Entrega() {
   const [modalAssinaturaAberto, setModalAssinaturaAberto] = useState(false);
   const [assinaturaBase64, setAssinaturaBase64] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [estaDesenhandoUI, setEstaDesenhandoUI] = useState(false); // Controle visual
-  const desenhandoRef = useRef(false); // Controle técnico do traço
+  const [estaDesenhandoUI, setEstaDesenhandoUI] = useState(false);
+  const desenhandoRef = useRef(false);
   const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
 
   const [notificacao, setNotificacao] = useState<{msg: string, tipo: 'sucesso' | 'erro'} | null>(null);
@@ -68,13 +68,20 @@ export default function Entrega() {
     setTimeout(() => setNotificacao(null), 4000);
   };
 
-  // 1. Carrega Funcionários e Estoque
+  // 1. Carrega Funcionários e Estoque (COM FILTRO DE PINTURA)
   useEffect(() => {
     if (!setorAtivo) return;
     const unsubFunc = onSnapshot(query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo)), (snap) => setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    
     const unsubEstoque = onSnapshot(query(collection(db, 'estoque'), where('setorId', '==', setorAtivo)), (snap) => {
-      setEstoque(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((i: any) => i.quantidade > 0));
+      // 🛑 O SEGREDO ESTÁ AQUI: Ignora a categoria "Pintura" e itens zerados
+      const itensFiltrados = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(i => i.quantidade > 0 && i.categoria?.toLowerCase() !== 'pintura'); // toLowerCase() garante que ignora "Pintura", "PINTURA" ou "pintura"
+      
+      setEstoque(itensFiltrados);
     });
+
     return () => { unsubFunc(); unsubEstoque(); }
   }, [setorAtivo]);
 
@@ -206,21 +213,19 @@ export default function Entrega() {
       }
       avisar("Processo finalizado!");
       setCarrinho([]); setAssinaturaBase64(''); setFuncionarioSelecionado('');
-      setEstaDesenhandoUI(false); // Reseta a UI da assinatura
+      setEstaDesenhandoUI(false); 
     } catch (e) { avisar("Erro ao salvar lote.", "erro"); }
     setSalvando(false);
   };
 
-  // ✍️ --- LÓGICA DO CANVAS TELA CHEIA (Corrigido para não piscar) ---
+  // ✍️ --- LÓGICA DO CANVAS TELA CHEIA ---
   useEffect(() => {
-    // Se o modal não tá aberto, ou se a tela tá em pé (isPortrait), não monta a lona
     if (!modalAssinaturaAberto || isPortrait || !canvasRef.current) return;
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Define o tamanho real da tela e não muda mais
     setTimeout(() => {
       canvas.width = canvas.offsetWidth * window.devicePixelRatio;
       canvas.height = canvas.offsetHeight * window.devicePixelRatio;
@@ -240,7 +245,7 @@ export default function Entrega() {
       ctx.beginPath(); 
       ctx.moveTo(getPos(e).x, getPos(e).y); 
       desenhandoRef.current = true;
-      setEstaDesenhandoUI(true); // Some com a marca d'água "Assine Aqui"
+      setEstaDesenhandoUI(true); 
     };
 
     const move = (e: any) => { 
@@ -250,9 +255,7 @@ export default function Entrega() {
       ctx.stroke(); 
     };
 
-    const stop = () => { 
-      desenhandoRef.current = false; 
-    };
+    const stop = () => { desenhandoRef.current = false; };
 
     canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', stop);
     canvas.addEventListener('touchstart', start, { passive: false }); canvas.addEventListener('touchmove', move, { passive: false }); window.addEventListener('touchend', stop);
@@ -269,7 +272,7 @@ export default function Entrega() {
     if (ctx && canvas) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       setAssinaturaBase64('');
-      setEstaDesenhandoUI(false); // Volta a mostrar o texto "Assine Aqui"
+      setEstaDesenhandoUI(false); 
       desenhandoRef.current = false;
     }
   };
@@ -285,7 +288,6 @@ export default function Entrega() {
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '15px' }}>
       
-      {/* Toast */}
       {notificacao && (
         <div style={{ position: 'fixed', top: '15px', left: '50%', transform: 'translateX(-50%)', zIndex: 10002, backgroundColor: notificacao.tipo === 'sucesso' ? '#10b981' : '#ef4444', color: 'white', padding: '12px 24px', borderRadius: '50px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'bold' }}>
           {notificacao.tipo === 'sucesso' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />} {notificacao.msg}
@@ -369,7 +371,6 @@ export default function Entrega() {
       {modalAssinaturaAberto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'white', zIndex: 10000, display: 'flex', flexDirection: 'column' }}>
           
-          {/* Se a tela estiver em pé, mostra aviso para virar o celular */}
           {isPortrait ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1e293b', color: 'white', padding: '20px', textAlign: 'center' }}>
               <Smartphone size={70} style={{ marginBottom: '20px', transform: 'rotate(-90deg)', opacity: 0.8, color: '#3b82f6' }} />
@@ -380,7 +381,6 @@ export default function Entrega() {
               <Button onClick={() => setModalAssinaturaAberto(false)} style={{ backgroundColor: '#475569', color: 'white', height: '50px', padding: '0 30px' }}>Voltar</Button>
             </div>
           ) : (
-            /* Lona de Assinatura (Só aparece se deitado) */
             <>
               <div style={{ padding: '10px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
                 <h2 style={{ fontSize: '18px', margin: 0, fontWeight: '800', color: '#1e293b' }}>Assinatura do Colaborador</h2>
