@@ -153,7 +153,7 @@ const instalarApp = () => {
         <ul className={styles.menuList}>
           <li>
             <Link to="/dashboard" className={styles.menuItem}>
-              <LayoutDashboard size={20} style={{ marginRight: '12px' }} /> Dashboard
+              <LayoutDashboard size={20} style={{ marginRight: '12px' }} /> Início 
             </Link>
           </li>
           <li>
