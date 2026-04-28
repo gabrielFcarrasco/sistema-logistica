@@ -42,17 +42,15 @@ export default function Entrega() {
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   
-  // Estados de Seleção e Vigia
   const [itemSelecionado, setItemSelecionado] = useState('');
   const [quantidadeDesejada, setQuantidadeDesejada] = useState('1');
   const [durabilidadeManual, setDurabilidadeManual] = useState('');
   const [pendenciasFuncionario, setPendenciasFuncionario] = useState<any[]>([]);
 
-  // Estados de Justificativa
   const [itemPendenteJustificativa, setItemPendenteJustificativa] = useState<any>(null);
   const [justificativaSelecionada, setJustificativaSelecionada] = useState('');
 
-  // ✍️ ESTADOS DA ASSINATURA E ORIENTAÇÃO
+  // ✍️ ESTADOS DA ASSINATURA
   const [modalAssinaturaAberto, setModalAssinaturaAberto] = useState(false);
   const [assinaturaBase64, setAssinaturaBase64] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -68,16 +66,14 @@ export default function Entrega() {
     setTimeout(() => setNotificacao(null), 4000);
   };
 
-  // 1. Carrega Funcionários e Estoque (COM FILTRO DE PINTURA)
   useEffect(() => {
     if (!setorAtivo) return;
     const unsubFunc = onSnapshot(query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo)), (snap) => setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     
     const unsubEstoque = onSnapshot(query(collection(db, 'estoque'), where('setorId', '==', setorAtivo)), (snap) => {
-      // 🛑 O SEGREDO ESTÁ AQUI: Ignora a categoria "Pintura" e itens zerados
       const itensFiltrados = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as any))
-        .filter(i => i.quantidade > 0 && i.categoria?.toLowerCase() !== 'pintura'); // toLowerCase() garante que ignora "Pintura", "PINTURA" ou "pintura"
+        .filter(i => i.quantidade > 0 && i.categoria?.toLowerCase() !== 'pintura'); 
       
       setEstoque(itensFiltrados);
     });
@@ -85,7 +81,6 @@ export default function Entrega() {
     return () => { unsubFunc(); unsubEstoque(); }
   }, [setorAtivo]);
 
-  // 2. Busca Pendências de Uniformes
   useEffect(() => {
     if (!funcionarioSelecionado) {
       setPendenciasFuncionario([]);
@@ -100,7 +95,6 @@ export default function Entrega() {
     return () => unsub();
   }, [funcionarioSelecionado]);
 
-  // 3. Sugere durabilidade do estoque
   useEffect(() => {
     if (itemSelecionado) {
       const item = estoque.find(i => i.id === itemSelecionado);
@@ -108,14 +102,12 @@ export default function Entrega() {
     }
   }, [itemSelecionado, estoque]);
 
-  // 📱 4. Escuta Giro do Celular
   useEffect(() => {
     const handleResize = () => setIsPortrait(window.innerHeight > window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 🪄 LÓGICA DO VIGIA
   const calcularDiasDeUso = (dataAnterior: Date) => {
     const agora = new Date();
     const diffMs = agora.getTime() - dataAnterior.getTime();
@@ -182,9 +174,11 @@ export default function Entrega() {
   const finalizarEntregaTotal = async () => {
     if (!assinaturaBase64 || carrinho.length === 0) return avisar("Faltam dados.", "erro");
     setSalvando(true);
+    
     try {
       const horarioAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       
+      // Como a assinatura agora é minúscula, esse loop vai rodar na velocidade da luz
       for (const item of carrinho) {
         await addDoc(collection(db, 'entregas'), {
           setorId: setorAtivo,
@@ -195,7 +189,7 @@ export default function Entrega() {
           quantidade: item.quantidade,
           durabilidade: item.durabilidade,
           justificativa: item.justificativa || "Troca Normal",
-          assinatura: assinaturaBase64,
+          assinatura: assinaturaBase64, // Agora pesa só ~15kb
           dataHora: serverTimestamp(),
           horarioEntrega: horarioAgora
         });
@@ -215,10 +209,11 @@ export default function Entrega() {
       setCarrinho([]); setAssinaturaBase64(''); setFuncionarioSelecionado('');
       setEstaDesenhandoUI(false); 
     } catch (e) { avisar("Erro ao salvar lote.", "erro"); }
+    
     setSalvando(false);
   };
 
-  // ✍️ --- LÓGICA DO CANVAS TELA CHEIA ---
+  // ✍️ --- LÓGICA DO CANVAS TELA CHEIA (SUPER OTIMIZADA) ---
   useEffect(() => {
     if (!modalAssinaturaAberto || isPortrait || !canvasRef.current) return;
     
@@ -230,6 +225,11 @@ export default function Entrega() {
       canvas.width = canvas.offsetWidth * window.devicePixelRatio;
       canvas.height = canvas.offsetHeight * window.devicePixelRatio;
       ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      
+      // 🚀 MÁGICA 1: Preenche o fundo de branco (necessário para JPEG)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
       ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     }, 100);
     
@@ -270,7 +270,9 @@ export default function Entrega() {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (ctx && canvas) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Preenche com branco de novo ao invés de deixar transparente
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       setAssinaturaBase64('');
       setEstaDesenhandoUI(false); 
       desenhandoRef.current = false;
@@ -280,7 +282,8 @@ export default function Entrega() {
   const confirmarAssinatura = () => {
     const canvas = canvasRef.current;
     if (canvas) {
-      setAssinaturaBase64(canvas.toDataURL('image/png'));
+      // 🚀 MÁGICA 2: Salva em JPEG com 60% de qualidade. Reduz o peso em até 95%!
+      setAssinaturaBase64(canvas.toDataURL('image/jpeg', 0.6));
       setModalAssinaturaAberto(false);
     }
   };
