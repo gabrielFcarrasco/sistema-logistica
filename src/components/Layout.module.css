@@ -37,6 +37,7 @@
   flex-direction: column;
   transition: transform 0.3s ease-in-out;
   z-index: 50;
+  height: 100vh; /* Garante que ocupe exatamente a altura da tela */
 }
 
 .logoContainer {
@@ -44,6 +45,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0; /* Impede a logo de encolher */
 }
 
 .logo {
@@ -58,11 +60,28 @@
   cursor: pointer;
 }
 
+/* 🌟 A MÁGICA ACONTECE AQUI */
 .menuList {
   list-style: none;
   padding: 0;
   margin: 0;
   flex-grow: 1;
+  overflow-y: auto; /* Permite rolar os menus se não couberem na tela */
+}
+
+/* Deixa a barra de rolagem do menu bonitinha e fina no PC */
+.menuList::-webkit-scrollbar {
+  width: 6px;
+}
+.menuList::-webkit-scrollbar-track {
+  background: transparent;
+}
+.menuList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+.menuList::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .menuItem {
@@ -88,6 +107,8 @@
   text-decoration: none;
   transition: background-color 0.2s;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0; /* Impede que o botão de sair seja esmagado */
+  cursor: pointer;
 }
 
 .btnSair:hover {
@@ -121,17 +142,16 @@
     top: 0;
     left: 0;
     height: 100%;
-    transform: translateX(-100%); /* Esconde o menu fora da tela */
+    transform: translateX(-100%);
     box-shadow: 4px 0 15px rgba(0, 0, 0, 0.3);
   }
 
-  /* Classe ativada via JavaScript quando clica no hambúrguer */
   .sidebar.aberto {
     transform: translateX(0);
   }
 
   .btnFecharMobile {
-    display: block; /* Mostra o "X" de fechar no celular */
+    display: block;
   }
 
   .mainContent {
@@ -150,7 +170,6 @@
     backdrop-filter: blur(2px);
   }
 
-  /* Faz com que todos os grids fiquem em coluna única no celular */
   :global(form) > div {
     grid-template-columns: 1fr !important;
   }
