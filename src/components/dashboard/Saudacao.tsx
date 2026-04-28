@@ -1,30 +1,34 @@
+// src/components/dashboard/Saudacao.tsx
 import { useState, useEffect } from 'react';
-import { auth } from '../../services/firebase';
 
 export default function Saudacao() {
-  const [mensagem, setMensagem] = useState('');
+  const [mensagem, setMensagem] = useState('Olá');
   
-  // Pega o nome antes do @ do e-mail
-  const usuario = auth.currentUser?.email?.split('@')[0] || 'Gestor';
+  // Puxa o nome salvo no login ou usa "Gestor" como segurança caso dê erro
+  const nomeCompleto = localStorage.getItem('userName') || 'Gestor';
+  
+  // Pega apenas o primeiro nome (ex: "João Silva" vira "João")
+  const primeiroNome = nomeCompleto.split(' ')[0];
 
   useEffect(() => {
     const hora = new Date().getHours();
-    if (hora >= 5 && hora < 12) setMensagem('Bom dia');
-    else if (hora >= 12 && hora < 18) setMensagem('Boa tarde');
-    else setMensagem('Boa noite');
+    
+    if (hora >= 5 && hora < 12) {
+      setMensagem('Bom dia');
+    } else if (hora >= 12 && hora < 18) {
+      setMensagem('Boa tarde');
+    } else {
+      setMensagem('Boa noite');
+    }
   }, []);
 
-  const dataAtual = new Intl.DateTimeFormat('pt-BR', { 
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
-  }).format(new Date());
-
   return (
-    <div style={{ marginBottom: '30px' }}>
-      <h1 style={{ fontSize: '28px', color: '#1e293b', margin: '0 0 8px 0' }}>
-        {mensagem}, <span style={{ textTransform: 'capitalize', color: 'var(--cor-primaria)' }}>{usuario}</span>!
+    <div>
+      <h1 style={{ margin: 0, fontSize: '24px', color: '#1e293b', fontWeight: '800' }}>
+        {mensagem}, <span style={{ color: 'var(--cor-primaria)' }}>{primeiroNome}</span>! 
       </h1>
-      <p style={{ color: '#64748b', margin: 0, textTransform: 'capitalize', fontSize: '14px' }}>
-        {dataAtual}
+      <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+        Aqui está o resumo da sua operação hoje.
       </p>
     </div>
   );
