@@ -33,7 +33,7 @@ export default function PedidosCompra() {
   const [itensPedido, setItensPedido] = useState<ItemPedido[]>([]);
   const [buscaEstoque, setBuscaEstoque] = useState('');
   
-  // Estados para Uniforme Individual (Inteligente)
+  // Estados para Uniforme Individual
   const [idFuncSelected, setIdFuncSelected] = useState('');
   const [tipoVestuario, setTipoVestuario] = useState<'Camisa' | 'Calça' | 'Bota'>('Camisa');
   const [qtdVestuario, setQtdVestuario] = useState('1');
@@ -72,7 +72,6 @@ export default function PedidosCompra() {
       if (!item) return avisar("Selecione um colaborador primeiro.", "erro");
       if (Number(qtdVestuario) <= 0) return avisar("Quantidade inválida.", "erro");
 
-      // Inteligência de Tamanhos: Bota vs Roupas
       const isBota = tipoVestuario === 'Bota';
       const tamanhoDefinido = isBota ? (item.tamanhoCalcado || 'N/I') : (item.tamanhoUniforme || 'N/I');
       const unidadeDefinida = isBota ? 'PAR' : 'UN';
@@ -129,7 +128,6 @@ export default function PedidosCompra() {
         cnpj: "31.362.302/0001-33"
       });
 
-      // Cria pendências para os itens de funcionários aguardarem a entrega
       for (const item of itensPedido) {
         if (item.funcionarioId) {
           await addDoc(collection(db, 'entregas_pendentes'), {
@@ -157,20 +155,32 @@ export default function PedidosCompra() {
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '15px', paddingBottom: '80px' }}>
       
-      {/* Toast Notificação */}
       {notificacao && (
         <div style={{ position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 11000, backgroundColor: notificacao.tipo === 'sucesso' ? '#10b981' : '#ef4444', color: 'white', padding: '12px 24px', borderRadius: '50px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'bold' }}>
           {notificacao.tipo === 'sucesso' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />} {notificacao.msg}
         </div>
       )}
 
-      {/* Regras CSS para impressão do PDF */}
+      {/* 🚀 OTIMIZAÇÃO MAXIMA DO PDF */}
       <style>{`
         @media print { 
+          body { margin: 0; padding: 0; background: white; }
           body * { visibility: hidden; } 
           #print-area, #print-area * { visibility: visible; } 
-          #print-area { position: absolute; left: 0; top: 0; width: 100%; } 
+          #print-area { 
+            position: absolute; 
+            left: 0; 
+            top: 0; 
+            width: 100%; 
+            margin: 0; 
+            padding: 20px !important; 
+            box-sizing: border-box; 
+            min-height: 0 !important; /* Evita folha extra */
+          } 
           .no-print { display: none !important; } 
+          table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; } /* Não corta linha no meio */
+          thead { display: table-header-group; } /* Repete o cabeçalho se houver página 2 */
         }
       `}</style>
 
@@ -187,7 +197,6 @@ export default function PedidosCompra() {
         {/* COLUNA ESQUERDA: ADICIONAR ITENS */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
-          {/* 1. BUSCAR DO ESTOQUE */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', borderTop: '4px solid #3b82f6' }}>
             <h3 style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 15px 0', color: '#1d4ed8', fontWeight: 'bold' }}>
               <Search size={18} /> BUSCAR DO ESTOQUE
@@ -222,12 +231,10 @@ export default function PedidosCompra() {
             )}
           </div>
 
-          {/* 2. PEDIDO INDIVIDUAL (UNIFORMES INTELIGENTES) */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', borderTop: '4px solid #8b5cf6' }}>
             <h3 style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 15px 0', color: '#6d28d9', fontWeight: 'bold' }}>
               <Shirt size={18} /> VESTUÁRIO E EPI INDIVIDUAL
             </h3>
-            
             <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b', display: 'block', marginBottom: '5px' }}>PARA QUEM?</label>
             <select value={idFuncSelected} onChange={e => setIdFuncSelected(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '15px', fontSize: '14px', outline: 'none', backgroundColor: '#f8fafc' }}>
               <option value="">Selecione o Colaborador...</option>
@@ -259,7 +266,6 @@ export default function PedidosCompra() {
             </div>
           </div>
 
-          {/* 3. ADIÇÃO MANUAL AVULSA */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', borderTop: '4px solid #64748b' }}>
             <h3 style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 15px 0', color: '#475569', fontWeight: 'bold' }}>
               <ListPlus size={18} /> ADICIONAR ITEM AVULSO
@@ -315,7 +321,7 @@ export default function PedidosCompra() {
 
       </div>
 
-      {/* 🖨️ MODAL DE PREVIEW E IMPRESSÃO (MANTIDO) */}
+      {/* 🖨️ MODAL DE PREVIEW E IMPRESSÃO (OTIMIZADO) */}
       {mostrarPreview && (
         <div className="no-print" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', zIndex: 10000, display: 'flex', flexDirection: 'column', padding: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px' }}>
@@ -327,12 +333,13 @@ export default function PedidosCompra() {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '10px', display: 'flex', justifyContent: 'center' }}>
-            <div id="print-area" style={{ backgroundColor: 'white', width: '100%', maxWidth: '900px', minHeight: '100%', padding: '40px', color: 'black', borderRadius: '8px', fontFamily: estiloProfissional ? 'serif' : 'sans-serif' }}>
+            {/* O ID print-area agora foca apenas no conteúdo limpo */}
+            <div id="print-area" style={{ backgroundColor: 'white', width: '100%', maxWidth: '900px', padding: '30px', color: 'black', fontFamily: estiloProfissional ? 'serif' : 'sans-serif' }}>
               {estiloProfissional ? (
                 <div>
                   <h1 style={{ fontSize: '24px', margin: 0, fontWeight: '900' }}>CARVALHO FUNILARIA E PINTURAS LTDA</h1>
                   <p style={{ fontSize: '13px', borderBottom: '2px solid black', paddingBottom: '15px', color: '#333' }}>CNPJ: 31.362.302/0001-33 | Araraquara/SP | Unidade: {setorAtivo}</p>
-                  <h2 style={{ textAlign: 'center', fontSize: '18px', margin: '30px 0' }}>SOLICITAÇÃO DE ORÇAMENTO / COMPRA</h2>
+                  <h2 style={{ textAlign: 'center', fontSize: '18px', margin: '20px 0' }}>SOLICITAÇÃO DE ORÇAMENTO / COMPRA</h2>
                   <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
                     <thead>
                       <tr style={{ backgroundColor: '#f8fafc' }}>
@@ -382,5 +389,5 @@ export default function PedidosCompra() {
   );
 }
 
-const tHead: React.CSSProperties = { border: '1px solid black', padding: '12px', fontSize: '12px', textAlign: 'left', fontWeight: 'bold' };
+const tHead: React.CSSProperties = { border: '1px solid black', padding: '12px', fontSize: '13px', textAlign: 'left', fontWeight: 'bold' };
 const tCell: React.CSSProperties = { border: '1px solid black', padding: '12px', fontSize: '14px' };
