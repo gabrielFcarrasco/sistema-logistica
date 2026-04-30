@@ -4,26 +4,19 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
+
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { 
-  ShoppingCart, Plus, Trash2, Printer, 
-  X, Shirt, Save, Search, ListPlus, 
-  CheckCircle2, AlertCircle, Footprints, Scissors
-} from 'lucide-react';
-
-import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
+import { ShoppingCart, Plus, Trash2, Save, Search } from 'lucide-react';
 
 interface ItemPedido {
   id: string;
   nome: string;
   quantidade: number;
   unidade: string;
-  ca?: string;
   marca?: string;
-  funcionarioId?: string;
+  ca?: string;
   funcionarioNome?: string;
   tamanho?: string;
 }
@@ -31,139 +24,200 @@ interface ItemPedido {
 export default function PedidosCompra() {
   const { setorAtivo } = useOutletContext<{ setorAtivo: string }>();
 
-  const [estoqueCompleto, setEstoqueCompleto] = useState<any[]>([]);
+  const [estoque, setEstoque] = useState<any[]>([]);
   const [funcionarios, setFuncionarios] = useState<any[]>([]);
-  const [itensPedido, setItensPedido] = useState<ItemPedido[]>([]);
+  const [itens, setItens] = useState<ItemPedido[]>([]);
 
-  const [buscaEstoque, setBuscaEstoque] = useState('');
-  const [idFuncSelected, setIdFuncSelected] = useState('');
-  const [tipoVestuario, setTipoVestuario] = useState<'Camisa' | 'Calça' | 'Bota'>('Camisa');
-  const [qtdVestuario, setQtdVestuario] = useState('1');
-
+  const [busca, setBusca] = useState('');
   const [nomeManual, setNomeManual] = useState('');
-  const [qtdManual, setQtdManual] = useState('1');
-  const [unidManual, setUnidManual] = useState('UN');
+  const [qtdManual, setQtdManual] = useState(1);
 
-  const [salvando, setSalvando] = useState(false);
+  const [funcId, setFuncId] = useState('');
+  const [tipoVestuario, setTipoVestuario] = useState('Camisa');
 
-  // 🔥 GERAR PDF (NOVO MÉTODO)
+  // 🔥 GERAR PDF PROFISSIONAL
   const gerarPDF = () => {
     const doc = new jsPDF();
 
-    doc.setFontSize(16);
-    doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 15);
+    const cor: [number, number, number] = [16, 185, 129];
 
-    doc.setFontSize(10);
-    doc.text("CNPJ: 31.362.302/0001-33", 14, 22);
-    doc.text("RUA VISCONDE DE PARNAÍBA, 1235 - MOOCA - SP", 14, 27);
-    doc.text(`Data: ${new Date().toLocaleDateString("pt-BR")}`, 150, 22);
+    // HEADER
+    doc.setFillColor(...cor);
+    doc.rect(0, 0, 210, 20, "F");
 
-    doc.setFontSize(13);
-    doc.text("SOLICITAÇÃO DE COMPRA / ORÇAMENTO", 14, 40);
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(14);
+    doc.text("PEDIDO DE COMPRA", 14, 13);
 
-    const linhas = itensPedido.map((item) => [
-      `${item.quantidade} ${item.unidade}`,
-      item.nome,
-      item.marca || "-",
-      item.ca || "-",
-      item.funcionarioNome
-        ? `${item.funcionarioNome} (Tam: ${item.tamanho})`
-        : "ESTOQUE",
+    // INFO
+    doc.setTextColor(0,0,0);
+    doc.setFontSize(11);
+    doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 30);
+    doc.setFontSize(9);
+    doc.text("CNPJ: 31.362.302/0001-33", 14, 35);
+    doc.text(`Setor: ${setorAtivo}`, 150, 30);
+    doc.text(`Data: ${new Date().toLocaleDateString()}`, 150, 35);
+
+    const pedidoNumero = Date.now().toString().slice(-6);
+    doc.text(`Pedido Nº: ${pedidoNumero}`, 150, 40);
+
+    // TABLE
+    const rows = itens.map(i => [
+      `${i.quantidade} ${i.unidade}`,
+      i.nome,
+      i.marca || '-',
+      i.ca || '-',
+      i.funcionarioNome || 'ESTOQUE'
     ]);
 
     autoTable(doc, {
-      startY: 45,
-      head: [["QTD", "DESCRIÇÃO", "MARCA", "C.A", "DESTINO"]],
-      body: linhas,
+      startY: 50,
+      head: [["QTD", "ITEM", "MARCA", "CA", "DESTINO"]],
+      body: rows,
+      headStyles: { fillColor: cor },
+      alternateRowStyles: { fillColor: [240,255,244] }
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY + 20;
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
 
-    doc.text("Assinatura: ___________________________", 14, finalY);
+    doc.text(`Total de itens: ${itens.length}`, 14, finalY);
 
-    doc.save("pedido-compra.pdf");
+    doc.text("Assinatura:", 14, finalY + 10);
+    doc.line(14, finalY + 15, 100, finalY + 15);
+
+    doc.save(`pedido-${pedidoNumero}.pdf`);
   };
 
   useEffect(() => {
     if (!setorAtivo) return;
 
-    const qEstoque = query(collection(db, 'estoque'), where('setorId', '==', setorAtivo));
-    const unsubEstoque = onSnapshot(qEstoque, (snap) => {
-      setEstoqueCompleto(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const q1 = query(collection(db, 'estoque'), where('setorId', '==', setorAtivo));
+    const q2 = query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo));
+
+    const unsub1 = onSnapshot(q1, snap => {
+      setEstoque(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    const qFunc = query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo));
-    const unsubFunc = onSnapshot(qFunc, (snap) => {
+    const unsub2 = onSnapshot(q2, snap => {
       setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    return () => { unsubEstoque(); unsubFunc(); };
+    return () => { unsub1(); unsub2(); };
   }, [setorAtivo]);
 
-  const adicionarAoPedido = (item: any) => {
-    const novoItem: ItemPedido = {
+  const addItem = (item:any) => {
+    setItens([...itens, {
       id: Date.now().toString(),
       nome: item.nome,
       quantidade: 1,
       unidade: item.unidade || 'UN'
-    };
-
-    setItensPedido([...itensPedido, novoItem]);
+    }]);
   };
 
-  const finalizarPedido = async () => {
-    setSalvando(true);
+  const addManual = () => {
+    if (!nomeManual) return;
 
-    try {
-      await addDoc(collection(db, 'pedidos_compra_logs'), {
-        setorId: setorAtivo,
-        data: serverTimestamp(),
-        itens: itensPedido
-      });
+    setItens([...itens, {
+      id: Date.now().toString(),
+      nome: nomeManual,
+      quantidade: qtdManual,
+      unidade: 'UN'
+    }]);
 
-      // 🚀 GERA PDF DIRETO (SEM PRINT)
-      gerarPDF();
-
-    } catch (e) {
-      console.error(e);
-    }
-
-    setSalvando(false);
+    setNomeManual('');
   };
+
+  const addUniforme = () => {
+    const f = funcionarios.find(x => x.id === funcId);
+    if (!f) return;
+
+    setItens([...itens, {
+      id: Date.now().toString(),
+      nome: tipoVestuario,
+      quantidade: 1,
+      unidade: tipoVestuario === 'Bota' ? 'PAR' : 'UN',
+      funcionarioNome: f.nome,
+      tamanho: tipoVestuario === 'Bota' ? f.tamanhoCalcado : f.tamanhoUniforme
+    }]);
+  };
+
+  const finalizar = async () => {
+    await addDoc(collection(db, 'pedidos_compra_logs'), {
+      setorId: setorAtivo,
+      data: serverTimestamp(),
+      itens
+    });
+
+    gerarPDF();
+  };
+
+  const filtrados = estoque.filter(i =>
+    i.nome.toLowerCase().includes(busca.toLowerCase())
+  );
 
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ padding: 20, maxWidth: 1000, margin: 'auto' }}>
 
-      <h1>Pedidos de Compra</h1>
+      <h2>Pedidos de Compra</h2>
 
+      {/* BUSCA */}
       <input
-        placeholder="Buscar..."
-        value={buscaEstoque}
-        onChange={e => setBuscaEstoque(e.target.value)}
+        placeholder="Buscar item..."
+        value={busca}
+        onChange={e => setBusca(e.target.value)}
       />
 
-      {estoqueCompleto
-        .filter(i => i.nome.toLowerCase().includes(buscaEstoque.toLowerCase()))
-        .map(item => (
-          <div key={item.id}>
-            {item.nome}
-            <button onClick={() => adicionarAoPedido(item)}>Adicionar</button>
-          </div>
+      {filtrados.map(item => (
+        <div key={item.id}>
+          {item.nome}
+          <button onClick={() => addItem(item)}>+</button>
+        </div>
+      ))}
+
+      {/* MANUAL */}
+      <h3>Item Manual</h3>
+      <input
+        placeholder="Nome"
+        value={nomeManual}
+        onChange={e => setNomeManual(e.target.value)}
+      />
+      <input
+        type="number"
+        value={qtdManual}
+        onChange={e => setQtdManual(Number(e.target.value))}
+      />
+      <button onClick={addManual}>Adicionar</button>
+
+      {/* UNIFORME */}
+      <h3>Uniforme</h3>
+      <select onChange={e => setFuncId(e.target.value)}>
+        <option>Selecione</option>
+        {funcionarios.map(f => (
+          <option key={f.id} value={f.id}>{f.nome}</option>
         ))}
+      </select>
 
-      <h2>Carrinho</h2>
+      <select onChange={e => setTipoVestuario(e.target.value)}>
+        <option>Camisa</option>
+        <option>Calça</option>
+        <option>Bota</option>
+      </select>
 
-      {itensPedido.map((item, idx) => (
+      <button onClick={addUniforme}>Adicionar Uniforme</button>
+
+      {/* CARRINHO */}
+      <h3>Carrinho</h3>
+      {itens.map((i, idx) => (
         <div key={idx}>
-          {item.nome} - {item.quantidade}
-          <button onClick={() => setItensPedido(itensPedido.filter((_, i) => i !== idx))}>
-            Remover
+          {i.nome} - {i.quantidade}
+          <button onClick={() => setItens(itens.filter((_, x) => x !== idx))}>
+            <Trash2 size={14}/>
           </button>
         </div>
       ))}
 
-      <button onClick={finalizarPedido} disabled={salvando}>
-        {salvando ? "Gerando..." : "Finalizar e Gerar PDF"}
+      <button onClick={finalizar}>
+        <Save size={16}/> Finalizar e Gerar PDF
       </button>
 
     </div>
