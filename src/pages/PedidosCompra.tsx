@@ -12,7 +12,8 @@ import logoCarvalho from '../assets/LogoLimpa.webp';
 
 import { 
   ShoppingCart, Plus, Trash2, Save, Search, 
-  Shirt, FileDown, Package, FileText, ListChecks, X
+  Shirt, FileDown, Package, FileText, ListChecks, X,
+  ListPlus // ✨ Ícone adicionado aqui para corrigir o erro
 } from 'lucide-react';
 
 import Button from '../components/ui/Button';
@@ -48,88 +49,89 @@ export default function PedidosCompra() {
   const [loading, setLoading] = useState(false);
   const [modalEscolhaAberto, setModalEscolhaAberto] = useState(false);
 
-  // 📄 GERADOR DE PDF MULTI-ESTILO
+  // 📄 GERADOR DE PDF MULTI-ESTILO (Corrigido para Produção/Vite)
   const gerarPDF = (estilo: 'simples' | 'personalizado') => {
-    const doc = new jsPDF();
-    const azulCarvalho: [number, number, number] = [30, 41, 59];
-    const verdeSucesso: [number, number, number] = [16, 185, 129];
-    const pedidoNumero = Date.now().toString().slice(-6);
-
-    // 1. Logotipo e Identificação
     try {
-      // Adiciona a logo (ajuste as coordenadas x, y, largura, altura conforme necessário)
-      doc.addImage(logoCarvalho, 'WEBP', 14, 10, 40, 15);
-    } catch (e) {
-      console.error("Logo não carregada no PDF", e);
+      const doc = new jsPDF();
+      const azulCarvalho: [number, number, number] = [30, 41, 59];
+      const pedidoNumero = Date.now().toString().slice(-6);
+
+      // 1. Logotipo e Identificação
+      try {
+        doc.addImage(logoCarvalho, 'WEBP', 14, 10, 40, 15);
+      } catch (e) {
+        console.error("Logo não carregada no PDF", e);
+      }
+
+      if (estilo === 'personalizado') {
+        doc.setFillColor(...azulCarvalho);
+        doc.rect(140, 10, 56, 25, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.text("PEDIDO DE COMPRA", 145, 18);
+        doc.setFontSize(14);
+        doc.text(`#${pedidoNumero}`, 145, 28);
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 35);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text("CNPJ: 31.362.302/0001-33", 14, 40);
+        doc.text(`UNIDADE: ${setorAtivo.toUpperCase()} | DATA: ${new Date().toLocaleDateString()}`, 14, 45);
+      } else {
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.text("LISTA DE COMPRAS - CARVALHO", 60, 20);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Data: ${new Date().toLocaleDateString()} | Pedido: ${pedidoNumero}`, 14, 35);
+        doc.line(14, 38, 196, 38);
+      }
+
+      // 2. Tabela de Itens
+      const rows = itens.map(i => [
+        `${i.quantidade} ${i.unidade}`,
+        i.nome + (i.tamanho ? ` (Tam: ${i.tamanho})` : ''),
+        i.marca || '-',
+        i.funcionarioNome || 'ESTOQUE GERAL'
+      ]);
+
+      // 🛡️ Segurança para o autoTable no Build do Vite
+      const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
+      
+      renderTable(doc, {
+        startY: estilo === 'personalizado' ? 55 : 45,
+        head: [["QTD", "DESCRIÇÃO DO MATERIAL", "MARCA/REF", "DESTINO FINAL"]],
+        body: rows,
+        theme: estilo === 'personalizado' ? 'grid' : 'plain',
+        headStyles: { 
+          fillColor: estilo === 'personalizado' ? azulCarvalho : [241, 245, 249],
+          textColor: estilo === 'personalizado' ? [255, 255, 255] : [0, 0, 0],
+          fontStyle: 'bold'
+        },
+        styles: { fontSize: 9, cellPadding: 5 },
+        alternateRowStyles: { fillColor: [248, 250, 252] }
+      });
+
+      const finalY = (doc as any).lastAutoTable.finalY + 20;
+      doc.setTextColor(100, 116, 139);
+      doc.setFontSize(8);
+      doc.text("Documento gerado via Sistema Interno de Gestão de EPIs - Carvalho", 105, 285, { align: 'center' });
+
+      if (estilo === 'personalizado') {
+        doc.setDrawColor(200, 200, 200);
+        doc.line(14, finalY + 15, 80, finalY + 15);
+        doc.text("Assinatura do Solicitante", 14, finalY + 20);
+      }
+
+      doc.save(`Pedido_Carvalho_${pedidoNumero}.pdf`);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao gerar PDF.");
     }
-
-    if (estilo === 'personalizado') {
-      // DESIGN ORÇAMENTO FORMAL
-      doc.setFillColor(...azulCarvalho);
-      doc.rect(140, 10, 56, 25, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(10);
-      doc.text("PEDIDO DE COMPRA", 145, 18);
-      doc.setFontSize(14);
-      doc.text(`#${pedidoNumero}`, 145, 28);
-
-      doc.setTextColor(30, 41, 59);
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 35);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text("CNPJ: 31.362.302/0001-33", 14, 40);
-      doc.text(`UNIDADE: ${setorAtivo.toUpperCase()} | DATA: ${new Date().toLocaleDateString()}`, 14, 45);
-    } else {
-      // DESIGN LISTA SIMPLES
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(16);
-      doc.setFont("helvetica", "bold");
-      doc.text("LISTA DE COMPRAS - CARVALHO", 60, 20);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Data: ${new Date().toLocaleDateString()} | Pedido: ${pedidoNumero}`, 14, 35);
-      doc.line(14, 38, 196, 38);
-    }
-
-    // 2. Tabela de Itens
-    const rows = itens.map(i => [
-      `${i.quantidade} ${i.unidade}`,
-      i.nome + (i.tamanho ? ` (Tam: ${i.tamanho})` : ''),
-      i.marca || '-',
-      i.funcionarioNome || 'ESTOQUE GERAL'
-    ]);
-
-    const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
-    
-    renderTable(doc, {
-      startY: estilo === 'personalizado' ? 55 : 45,
-      head: [["QTD", "DESCRIÇÃO DO MATERIAL", "MARCA/REF", "DESTINO FINAL"]],
-      body: rows,
-      theme: estilo === 'personalizado' ? 'grid' : 'plain',
-      headStyles: { 
-        fillColor: estilo === 'personalizado' ? azulCarvalho : [241, 245, 249],
-        textColor: estilo === 'personalizado' ? [255, 255, 255] : [0, 0, 0],
-        fontStyle: 'bold'
-      },
-      styles: { fontSize: 9, cellPadding: 5 },
-      alternateRowStyles: { fillColor: [248, 250, 252] }
-    });
-
-    // 3. Rodapé
-    const finalY = (doc as any).lastAutoTable.finalY + 20;
-    doc.setTextColor(100, 116, 139);
-    doc.setFontSize(8);
-    doc.text("Documento gerado via Sistema Interno de Gestão de EPIs - Carvalho", 105, 285, { align: 'center' });
-
-    if (estilo === 'personalizado') {
-      doc.setDrawColor(200, 200, 200);
-      doc.line(14, finalY + 15, 80, finalY + 15);
-      doc.text("Assinatura do Solicitante", 14, finalY + 20);
-    }
-
-    doc.save(`Pedido_Carvalho_${pedidoNumero}.pdf`);
   };
 
   useEffect(() => {
@@ -256,7 +258,7 @@ export default function PedidosCompra() {
             </h3>
             <Input placeholder="Nome do material..." value={nomeManual} onChange={e => setNomeManual(e.target.value)} />
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              <Input type="number" value={qtdManual} onChange={e => setQtdManual(Number(e.target.value))} style={{ width: '80px' }} />
+              <input type="number" value={qtdManual} onChange={e => setQtdManual(Number(e.target.value))} style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
               <Button onClick={addManual} style={{ flex: 1, backgroundColor: '#64748b' }}>Adicionar</Button>
             </div>
           </div>
@@ -298,35 +300,33 @@ export default function PedidosCompra() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.9)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}>
           <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '400px', borderRadius: '24px', padding: '30px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>Como deseja gerar o PDF?</h3>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>Gerar PDF</h3>
               <button onClick={() => setModalEscolhaAberto(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={24}/></button>
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <button 
                 onClick={() => handleFinalizarEProcessar('simples')}
-                style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', cursor: 'pointer', textAlign: 'left', transition: '0.2s' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', cursor: 'pointer', textAlign: 'left' }}
               >
                 <div style={{ backgroundColor: '#e2e8f0', padding: '10px', borderRadius: '12px' }}><ListChecks size={24} color="#64748b"/></div>
                 <div>
                   <strong style={{ display: 'block', fontSize: '15px' }}>Lista Simples</strong>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Ideal para conferência interna.</span>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Conferência interna.</span>
                 </div>
               </button>
 
               <button 
                 onClick={() => handleFinalizarEProcessar('personalizado')}
-                style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '20px', borderRadius: '16px', border: '2px solid #dcfce7', backgroundColor: '#f0fdf4', cursor: 'pointer', textAlign: 'left', transition: '0.2s' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '20px', borderRadius: '16px', border: '2px solid #dcfce7', backgroundColor: '#f0fdf4', cursor: 'pointer', textAlign: 'left' }}
               >
                 <div style={{ backgroundColor: '#10b981', padding: '10px', borderRadius: '12px' }}><FileText size={24} color="white"/></div>
                 <div>
                   <strong style={{ display: 'block', fontSize: '15px', color: '#065f46' }}>Orçamento Formal</strong>
-                  <span style={{ fontSize: '12px', color: '#059669' }}>Com logo, CNPJ e design profissional.</span>
+                  <span style={{ fontSize: '12px', color: '#059669' }}>Com logo e CNPJ.</span>
                 </div>
               </button>
             </div>
-            
-            {loading && <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '14px', color: '#3b82f6', fontWeight: 'bold' }}>Processando arquivo...</p>}
           </div>
         </div>
       )}
