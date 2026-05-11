@@ -1,5 +1,4 @@
 // src/pages/PedidosCompra.tsx
-
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -10,7 +9,7 @@ import autoTable from "jspdf-autotable";
 
 import { 
   ShoppingCart, Plus, Trash2, Save, Search, 
-  ListPlus, Shirt, User, FileDown, Package 
+  ListPlus, Shirt, FileDown, Package 
 } from 'lucide-react';
 
 import Button from '../components/ui/Button';
@@ -35,6 +34,8 @@ export default function PedidosCompra() {
   const [itens, setItens] = useState<ItemPedido[]>([]);
 
   const [busca, setBusca] = useState('');
+  const [qtdsBusca, setQtdsBusca] = useState<{[key: string]: number}>({}); // Controla as quantidades da pesquisa
+  
   const [nomeManual, setNomeManual] = useState('');
   const [qtdManual, setQtdManual] = useState(1);
 
@@ -42,62 +43,45 @@ export default function PedidosCompra() {
   const [tipoVestuario, setTipoVestuario] = useState('Camisa');
   const [loading, setLoading] = useState(false);
 
-  // 🔥 GERAR PDF PROFISSIONAL (Lógica Preservada e Refinada)
-  const gerarPDF = () => {
-    const doc = new jsPDF();
-    const cor: [number, number, number] = [30, 41, 59]; // Azul Marinho Carvalho
+  // 🔥 GERAR PDF (Lógica simplificada para máxima compatibilidade)
+  const gerarPDF = (itensAtuais: ItemPedido[]) => {
+    try {
+      const doc = new jsPDF();
+      const azulMarinho: [number, number, number] = [30, 41, 59];
 
-    // HEADER COLORIDO
-    doc.setFillColor(...cor);
-    doc.rect(0, 0, 210, 20, "F");
+      doc.setFillColor(...azulMarinho);
+      doc.rect(0, 0, 210, 20, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.text("SOLICITAÇÃO DE COMPRA - CARVALHO", 14, 13);
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("SOLICITAÇÃO DE COMPRA - CARVALHO", 14, 13);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(11);
+      doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 30);
+      doc.setFontSize(9);
+      doc.text(`Unidade: ${setorAtivo.toUpperCase()} | Data: ${new Date().toLocaleDateString()}`, 14, 36);
 
-    // INFO DA EMPRESA
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(11);
-    doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 30);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("CNPJ: 31.362.302/0001-33", 14, 35);
-    
-    // INFO DO PEDIDO
-    doc.text(`Unidade/Setor: ${setorAtivo.toUpperCase()}`, 140, 30);
-    doc.text(`Data: ${new Date().toLocaleDateString()}`, 140, 35);
-    const pedidoNumero = Date.now().toString().slice(-6);
-    doc.text(`Pedido Nº: ${pedidoNumero}`, 140, 40);
+      const rows = itensAtuais.map(i => [
+        `${i.quantidade} ${i.unidade}`,
+        i.nome + (i.tamanho ? ` (Tam: ${i.tamanho})` : ''),
+        i.marca || '-',
+        i.ca || '-',
+        i.funcionarioNome || 'ESTOQUE GERAL'
+      ]);
 
-    // TABLE
-    const rows = itens.map(i => [
-      `${i.quantidade} ${i.unidade}`,
-      i.nome + (i.tamanho ? ` (Tam: ${i.tamanho})` : ''),
-      i.marca || '-',
-      i.ca || '-',
-      i.funcionarioNome || 'ESTOQUE GERAL'
-    ]);
+      autoTable(doc, {
+        startY: 45,
+        head: [["QTD", "ITEM / TAMANHO", "MARCA", "CA", "DESTINO"]],
+        body: rows,
+        headStyles: { fillColor: azulMarinho },
+        styles: { fontSize: 9 },
+      });
 
-    autoTable(doc, {
-      startY: 50,
-      head: [["QTD", "ITEM / TAMANHO", "MARCA", "CA", "DESTINO"]],
-      body: rows,
-      headStyles: { fillColor: cor, halign: 'center' },
-      columnStyles: {
-        0: { halign: 'center', fontStyle: 'bold' },
-      },
-      styles: { fontSize: 9, cellPadding: 4 },
-      alternateRowStyles: { fillColor: [248, 250, 252] }
-    });
-
-    const finalY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(10);
-    doc.text(`Total de itens no lote: ${itens.length}`, 14, finalY);
-    doc.text("Assinatura do Responsável:", 14, finalY + 15);
-    doc.line(14, finalY + 20, 100, finalY + 20);
-
-    doc.save(`pedido-carvalho-${pedidoNumero}.pdf`);
+      doc.save(`Pedido_${Date.now()}.pdf`);
+    } catch (err) {
+      console.error("Erro ao gerar PDF:", err);
+      alert("Erro ao gerar PDF. Verifique o console.");
+    }
   };
 
   useEffect(() => {
@@ -111,16 +95,19 @@ export default function PedidosCompra() {
     return () => { unsub1(); unsub2(); };
   }, [setorAtivo]);
 
+  // Função para adicionar item da busca com a quantidade escolhida
   const addItem = (item: any) => {
+    const qtdEscolhida = qtdsBusca[item.id] || 1;
     setItens([...itens, {
       id: Date.now().toString(),
       nome: item.nome,
-      quantidade: 1,
+      quantidade: qtdEscolhida,
       unidade: item.unidade || 'UN',
       marca: item.marca,
       ca: item.ca
     }]);
     setBusca('');
+    setQtdsBusca(prev => ({ ...prev, [item.id]: 1 })); // Reseta qtd do campo
   };
 
   const addManual = () => {
@@ -138,7 +125,6 @@ export default function PedidosCompra() {
   const addUniforme = () => {
     const f = funcionarios.find(x => x.id === funcId);
     if (!f) return;
-
     const isBota = tipoVestuario === 'Bota';
     setItens([...itens, {
       id: Date.now().toString(),
@@ -161,7 +147,7 @@ export default function PedidosCompra() {
         itens,
         totalItens: itens.length
       });
-      gerarPDF();
+      gerarPDF(itens);
       setItens([]);
     } catch (error) {
       console.error(error);
@@ -184,16 +170,15 @@ export default function PedidosCompra() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
         
-        {/* COLUNA DE SELEÇÃO */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
-          {/* BUSCA NO ESTOQUE */}
+          {/* BUSCA COM SALDO E QUANTIDADE EDITÁVEL */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Search size={18} color="#3b82f6" /> Adicionar do Estoque
+              <Search size={18} color="#3b82f6" /> Pesquisar no Estoque
             </h3>
             <Input
-              placeholder="Buscar item no estoque..."
+              placeholder="Digite o nome do material..."
               value={busca}
               onChange={e => setBusca(e.target.value)}
             />
@@ -201,115 +186,90 @@ export default function PedidosCompra() {
             {busca && (
               <div style={{ marginTop: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
                 {filtrados.map(item => (
-                  <div key={item.id} style={{ padding: '10px 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '500' }}>{item.nome}</span>
-                    <Button onClick={() => addItem(item)} style={{ padding: '4px 8px' }}><Plus size={16}/></Button>
+                  <div key={item.id} style={{ padding: '12px 15px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: 'bold' }}>{item.nome}</span>
+                      <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 'bold' }}>Saldo: {item.quantidade}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input 
+                        type="number"
+                        min="1"
+                        value={qtdsBusca[item.id] || 1}
+                        onChange={e => setQtdsBusca({ ...qtdsBusca, [item.id]: Number(e.target.value) })}
+                        style={{ width: '70px', padding: '5px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                      />
+                      <Button onClick={() => addItem(item)} style={{ flex: 1, height: '35px' }}>
+                        <Plus size={16} /> Adicionar
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* UNIFORME INTELIGENTE */}
+          {/* UNIFORME */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Shirt size={18} color="#8b5cf6" /> Uniforme Individual
             </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <select 
+              value={funcId} 
+              onChange={e => setFuncId(e.target.value)}
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', marginBottom: '10px' }}
+            >
+              <option value="">Selecione o Colaborador</option>
+              {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </select>
+            <div style={{ display: 'flex', gap: '10px' }}>
               <select 
-                value={funcId} 
-                onChange={e => setFuncId(e.target.value)}
-                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}
+                value={tipoVestuario} 
+                onChange={e => setTipoVestuario(e.target.value)}
+                style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
               >
-                <option value="">Selecione o Colaborador</option>
-                {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                <option value="Camisa">Camisa</option>
+                <option value="Calça">Calça</option>
+                <option value="Bota">Bota</option>
               </select>
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <select 
-                  value={tipoVestuario} 
-                  onChange={e => setTipoVestuario(e.target.value)}
-                  style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                >
-                  <option value="Camisa">Camisa</option>
-                  <option value="Calça">Calça</option>
-                  <option value="Bota">Bota</option>
-                </select>
-                <Button onClick={addUniforme} style={{ backgroundColor: '#8b5cf6' }}><Plus size={20}/></Button>
-              </div>
+              <Button onClick={addUniforme} style={{ backgroundColor: '#8b5cf6' }}><Plus size={20}/></Button>
             </div>
           </div>
 
           {/* MANUAL */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ListPlus size={18} color="#64748b" /> Item Manual / Outros
+              <ListPlus size={18} color="#64748b" /> Item Manual
             </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <Input
-                placeholder="Nome do item..."
-                value={nomeManual}
-                onChange={e => setNomeManual(e.target.value)}
-              />
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <Input
-                  type="number"
-                  value={qtdManual}
-                  onChange={e => setQtdManual(Number(e.target.value))}
-                  style={{ width: '80px' }}
-                />
-                <Button onClick={addManual} style={{ flex: 1, backgroundColor: '#64748b' }}>Adicionar</Button>
-              </div>
+            <Input placeholder="Nome do item..." value={nomeManual} onChange={e => setNomeManual(e.target.value)} />
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <Input type="number" value={qtdManual} onChange={e => setQtdManual(Number(e.target.value))} style={{ width: '80px' }} />
+              <Button onClick={addManual} style={{ flex: 1, backgroundColor: '#64748b' }}>Adicionar</Button>
             </div>
           </div>
         </div>
 
-        {/* COLUNA DO CARRINHO (RESUMO) */}
+        {/* RESUMO DO PEDIDO */}
         <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', height: 'fit-content' }}>
-          <h3 style={{ fontSize: '18px', marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Package size={20} /> Itens no Pedido
-          </h3>
+          <h3 style={{ fontSize: '18px', marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px' }}>Itens no Pedido ({itens.length})</h3>
           
           {itens.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
-              <ShoppingCart size={40} style={{ opacity: 0.2, marginBottom: '10px' }} />
-              <p>Nenhum item adicionado.</p>
-            </div>
+            <p style={{ textAlign: 'center', color: '#94a3b8' }}>Nenhum item adicionado.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {itens.map((i, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                  <div>
-                    <strong style={{ fontSize: '14px', display: 'block' }}>{i.nome}</strong>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>
-                      Qtd: {i.quantidade} {i.unidade} {i.funcionarioNome && ` | Para: ${i.funcionarioNome}`}
-                    </span>
-                  </div>
-                  <button 
-                    onClick={() => setItens(itens.filter((_, x) => x !== idx))}
-                    style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '5px' }}
-                  >
-                    <Trash2 size={18}/>
-                  </button>
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '14px' }}><strong>{i.quantidade}x</strong> {i.nome} {i.funcionarioNome && `(${i.funcionarioNome})`}</span>
+                  <button onClick={() => setItens(itens.filter((_, x) => x !== idx))} style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }}><Trash2 size={16}/></button>
                 </div>
               ))}
-
-              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <Button 
-                  onClick={finalizar} 
-                  disabled={loading}
-                  style={{ width: '100%', height: '55px', fontSize: '16px', fontWeight: 'bold', backgroundColor: '#10b981' }}
-                >
-                  {loading ? 'Processando...' : <><FileDown size={20} style={{marginRight: '8px'}}/> Finalizar e Gerar PDF</>}
-                </Button>
-                <Button 
-                  variante="secundario" 
-                  onClick={() => setItens([])}
-                  style={{ width: '100%' }}
-                >
-                  Limpar Lote
-                </Button>
-              </div>
+              <Button 
+                onClick={finalizar} 
+                disabled={loading}
+                style={{ width: '100%', height: '55px', marginTop: '15px', backgroundColor: '#10b981', fontWeight: 'bold' }}
+              >
+                {loading ? 'Salvando...' : <><Save size={20} style={{marginRight: '8px'}}/> Finalizar e Baixar PDF</>}
+              </Button>
             </div>
           )}
         </div>

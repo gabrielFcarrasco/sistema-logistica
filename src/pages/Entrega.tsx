@@ -11,7 +11,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { 
   ClipboardSignature, CheckCircle2, AlertCircle, 
-  PenTool, Plus, ShoppingCart, Trash2, X, AlertTriangle, Shirt, Smartphone 
+  PenTool, Plus, ShoppingCart, Trash2, X, AlertTriangle, Shirt, Smartphone, UserCheck 
 } from 'lucide-react';
 
 interface ItemCarrinho {
@@ -37,9 +37,9 @@ const JUSTIFICATIVAS_PADRAO = [
 export default function Entrega() {
   const { setorAtivo } = useOutletContext<{ setorAtivo: string }>();
   
-  const [funcionarios, setFuncionarios] = useState<any[]>([]);
+  const [recebedores, setRecebedores] = useState<any[]>([]); // Lista combinada de funcionários e sócios
   const [estoque, setEstoque] = useState<any[]>([]);
-  const [funcionarioSelecionado, setFuncionarioSelecionado] = useState('');
+  const [recebedorSelecionado, setRecebedorSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   
   const [itemSelecionado, setItemSelecionado] = useState('');
@@ -66,34 +66,58 @@ export default function Entrega() {
     setTimeout(() => setNotificacao(null), 4000);
   };
 
+  // 1. Carrega Funcionários e Sócios
   useEffect(() => {
     if (!setorAtivo) return;
-    const unsubFunc = onSnapshot(query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo)), (snap) => setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+    // Escuta Funcionários do Setor
+    const unsubFunc = onSnapshot(query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo)), (snapFunc) => {
+      const funcs = snapFunc.docs.map(d => ({ id: d.id, ...d.data(), tipo: 'funcionario' }));
+      
+      // Escuta Sócios (Universal)
+      onSnapshot(query(collection(db, 'usuarios'), where('nivel', '==', 'socio')), (snapSocios) => {
+        const socios = snapSocios.docs.map(d => ({ id: d.id, ...d.data(), tipo: 'socio' }));
+        setRecebedores([...funcs, ...socios]);
+      });
+    });
     
     const unsubEstoque = onSnapshot(query(collection(db, 'estoque'), where('setorId', '==', setorAtivo)), (snap) => {
       const itensFiltrados = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as any))
         .filter(i => i.quantidade > 0 && i.categoria?.toLowerCase() !== 'pintura'); 
-      
       setEstoque(itensFiltrados);
     });
 
     return () => { unsubFunc(); unsubEstoque(); }
   }, [setorAtivo]);
 
+  // 2. Lógica para Sócios: Assinatura Automática
   useEffect(() => {
-    if (!funcionarioSelecionado) {
+    const selecao = recebedores.find(r => r.id === recebedorSelecionado);
+    if (selecao?.tipo === 'socio') {
+      setAssinaturaBase64('ASSINATURA DIGITAL (SÓCIO)'); // Preenche automático
+    } else {
+      setAssinaturaBase64(''); // Limpa se for funcionário comum
+    }
+  }, [recebedorSelecionado, recebedores]);
+
+  // 3. Busca Pendências (Apenas se for funcionário comum)
+  useEffect(() => {
+    if (!recebedorSelecionado) {
       setPendenciasFuncionario([]);
       return;
     }
+    const selecao = recebedores.find(r => r.id === recebedorSelecionado);
+    if (selecao?.tipo !== 'funcionario') return;
+
     const q = query(
       collection(db, 'entregas_pendentes'),
-      where('funcionarioId', '==', funcionarioSelecionado),
+      where('funcionarioId', '==', recebedorSelecionado),
       where('status', '==', 'aguardando_chegada')
     );
     const unsub = onSnapshot(q, (snap) => setPendenciasFuncionario(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => unsub();
-  }, [funcionarioSelecionado]);
+  }, [recebedorSelecionado, recebedores]);
 
   useEffect(() => {
     if (itemSelecionado) {
@@ -117,14 +141,21 @@ export default function Entrega() {
   };
 
   const verificarEAdicionar = async () => {
-    if (!funcionarioSelecionado || !itemSelecionado) return avisar("Selecione funcionário e material.", "erro");
+    if (!recebedorSelecionado || !itemSelecionado) return avisar("Selecione recebedor e material.", "erro");
     if (Number(quantidadeDesejada) <= 0) return avisar("A quantidade deve ser maior que zero.", "erro");
     
     const itemData = estoque.find(i => i.id === itemSelecionado);
     const durabilidadeDesejada = Number(durabilidadeManual) || 0;
+    const selecao = recebedores.find(r => r.id === recebedorSelecionado);
+
+    // 🛑 REGRA PARA SÓCIO: Pula verificação de vigia
+    if (selecao?.tipo === 'socio') {
+      adicionarAoCarrinho(itemData, durabilidadeDesejada);
+      return;
+    }
 
     try {
-      const q = query(collection(db, 'entregas'), where('funcionarioId', '==', funcionarioSelecionado), where('itemId', '==', itemSelecionado));
+      const q = query(collection(db, 'entregas'), where('funcionarioId', '==', recebedorSelecionado), where('itemId', '==', itemSelecionado));
       const snap = await getDocs(q);
       
       if (!snap.empty) {
@@ -150,7 +181,6 @@ export default function Entrega() {
         }
       }
       adicionarAoCarrinho(itemData, durabilidadeDesejada);
-
     } catch (error) {
       adicionarAoCarrinho(itemData, durabilidadeDesejada);
     }
@@ -177,21 +207,22 @@ export default function Entrega() {
     
     try {
       const horarioAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      
-      // Como a assinatura agora é minúscula, esse loop vai rodar na velocidade da luz
+      const selecao = recebedores.find(r => r.id === recebedorSelecionado);
+
       for (const item of carrinho) {
         await addDoc(collection(db, 'entregas'), {
           setorId: setorAtivo,
-          funcionarioId: funcionarioSelecionado,
-          funcionarioNome: funcionarios.find(f => f.id === funcionarioSelecionado).nome,
+          funcionarioId: recebedorSelecionado,
+          funcionarioNome: selecao.nome,
           itemId: item.id,
           itemNome: item.nome,
           quantidade: item.quantidade,
           durabilidade: item.durabilidade,
-          justificativa: item.justificativa || "Troca Normal",
-          assinatura: assinaturaBase64, // Agora pesa só ~15kb
+          justificativa: item.justificativa || "Retirada Sócio / Normal",
+          assinatura: assinaturaBase64, 
           dataHora: serverTimestamp(),
-          horarioEntrega: horarioAgora
+          horarioEntrega: horarioAgora,
+          recebedorTipo: selecao.tipo // Salva se foi sócio ou funcionário
         });
 
         if (item.isPendencia && item.pendenciaId) {
@@ -206,7 +237,7 @@ export default function Entrega() {
         }
       }
       avisar("Processo finalizado!");
-      setCarrinho([]); setAssinaturaBase64(''); setFuncionarioSelecionado('');
+      setCarrinho([]); setAssinaturaBase64(''); setRecebedorSelecionado('');
       setEstaDesenhandoUI(false); 
     } catch (e) { avisar("Erro ao salvar lote.", "erro"); }
     
@@ -225,11 +256,8 @@ export default function Entrega() {
       canvas.width = canvas.offsetWidth * window.devicePixelRatio;
       canvas.height = canvas.offsetHeight * window.devicePixelRatio;
       ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-      
-      // 🚀 MÁGICA 1: Preenche o fundo de branco (necessário para JPEG)
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
       ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     }, 100);
     
@@ -262,7 +290,7 @@ export default function Entrega() {
     
     return () => {
       canvas.removeEventListener('mousedown', start); canvas.removeEventListener('mousemove', move); window.removeEventListener('mouseup', stop);
-      canvas.removeEventListener('touchstart', start); canvas.removeEventListener('touchmove', move); window.removeEventListener('touchend', stop);
+      canvas.removeEventListener('touchstart', start); canvas.removeEventListener('touchmove', move); canvas.removeEventListener('touchend', stop);
     };
   }, [modalAssinaturaAberto, isPortrait]);
 
@@ -270,7 +298,6 @@ export default function Entrega() {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (ctx && canvas) {
-      // Preenche com branco de novo ao invés de deixar transparente
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       setAssinaturaBase64('');
@@ -282,7 +309,6 @@ export default function Entrega() {
   const confirmarAssinatura = () => {
     const canvas = canvasRef.current;
     if (canvas) {
-      // 🚀 MÁGICA 2: Salva em JPEG com 60% de qualidade. Reduz o peso em até 95%!
       setAssinaturaBase64(canvas.toDataURL('image/jpeg', 0.6));
       setModalAssinaturaAberto(false);
     }
@@ -306,10 +332,28 @@ export default function Entrega() {
           
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
             <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>RECEBEDOR *</label>
-            <select value={funcionarioSelecionado} onChange={e => setFuncionarioSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', outline: 'none' }}>
-              <option value="">Selecione o colaborador...</option>
-              {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            <select value={recebedorSelecionado} onChange={e => setRecebedorSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', outline: 'none' }}>
+              <option value="">Selecione o colaborador ou sócio...</option>
+              {recebedores.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.tipo === 'socio' ? `[SÓCIO] ${r.nome}` : r.nome}
+                </option>
+              ))}
             </select>
+
+            {pendenciasFuncionario.length > 0 && (
+              <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9a3412', marginBottom: '10px' }}>
+                  <Shirt size={20} /> <strong style={{fontSize: '12px'}}>UNIFORME(S) DISPONÍVEL!</strong>
+                </div>
+                {pendenciasFuncionario.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '10px 12px', borderRadius: '6px', marginBottom: '5px', border: '1px solid #fed7aa' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{p.itemNome} ({p.tamanho})</span>
+                    <button onClick={() => adicionarAoCarrinho(p, 180, 'Entrega de Pedido Especial', true, p.id)} style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>Incluir</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
@@ -353,9 +397,30 @@ export default function Entrega() {
           <h3 style={{ fontSize: '16px', color: '#1e293b', margin: 0 }}>Recibo e Assinatura</h3>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>A assinatura confirma o recebimento dos itens listados acima.</p>
           
-          <div onClick={() => setModalAssinaturaAberto(true)} style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', backgroundColor: '#f8fafc', overflow: 'hidden' }}>
-            {assinaturaBase64 ? (
+          <div 
+            onClick={() => {
+              const selecao = recebedores.find(r => r.id === recebedorSelecionado);
+              if (selecao?.tipo !== 'socio') setModalAssinaturaAberto(true);
+            }} 
+            style={{ 
+              height: '220px', 
+              border: '2px dashed #cbd5e1', 
+              borderRadius: '12px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              cursor: recebedores.find(r => r.id === recebedorSelecionado)?.tipo === 'socio' ? 'default' : 'pointer', 
+              backgroundColor: '#f8fafc', 
+              overflow: 'hidden' 
+            }}
+          >
+            {assinaturaBase64.startsWith('data:image') ? (
               <img src={assinaturaBase64} style={{ maxHeight: '100%', maxWidth: '100%' }} /> 
+            ) : assinaturaBase64 === 'ASSINATURA DIGITAL (SÓCIO)' ? (
+              <div style={{ textAlign: 'center', color: '#10b981' }}>
+                <UserCheck size={50} style={{ margin: '0 auto' }} />
+                <p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Assinatura Digital Ativada</p>
+              </div>
             ) : (
               <div style={{ textAlign: 'center', color: '#64748b' }}>
                 <PenTool size={40} style={{ margin: '0 auto' }} />
@@ -369,6 +434,36 @@ export default function Entrega() {
           </Button>
         </div>
       </div>
+
+      {/* --- MODAL DA JUSTIFICATIVA --- */}
+      {itemPendenteJustificativa && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.95)', zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '450px', borderRadius: '20px', padding: '30px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div style={{ backgroundColor: '#fff7ed', width: '70px', height: '70px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px' }}>
+                <AlertTriangle size={40} color="#f97316" />
+              </div>
+              <h2 style={{ fontSize: '20px', color: '#1e293b', margin: 0 }}>Troca Antecipada</h2>
+              <p style={{ fontSize: '14px', color: '#64748b', marginTop: '10px', lineHeight: '1.5' }}>
+                Última entrega: <strong>{itemPendenteJustificativa.dataAnterior} às {itemPendenteJustificativa.horaAnterior}</strong>.<br/>
+                Usado por <strong>{itemPendenteJustificativa.diasPassados} dias</strong>, deveria durar <strong>{itemPendenteJustificativa.durabilidadePrevista} dias</strong>.
+              </p>
+            </div>
+
+            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '10px' }}>QUAL O MOTIVO DA TROCA?</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+              {JUSTIFICATIVAS_PADRAO.map(j => (
+                <button key={j} onClick={() => setJustificativaSelecionada(j)} style={{ textAlign: 'left', padding: '14px', borderRadius: '10px', border: justificativaSelecionada === j ? '2px solid #f97316' : '1px solid #e2e8f0', backgroundColor: justificativaSelecionada === j ? '#fff7ed' : 'white', fontSize: '14px', fontWeight: justificativaSelecionada === j ? 'bold' : 'normal', transition: '0.2s', cursor: 'pointer' }}>{j}</button>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '30px' }}>
+              <Button onClick={() => setItemPendenteJustificativa(null)} style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>Cancelar</Button>
+              <Button onClick={() => adicionarAoCarrinho(itemPendenteJustificativa, itemPendenteJustificativa.dur, justificativaSelecionada)} disabled={!justificativaSelecionada} style={{ backgroundColor: '#f97316' }}>Autorizar</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- MODAL DA ASSINATURA --- */}
       {modalAssinaturaAberto && (
