@@ -1,7 +1,7 @@
 // src/pages/PedidosCompra.tsx
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, getDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -33,7 +33,6 @@ export default function PedidosCompra() {
 
   const [busca, setBusca] = useState('');
   const [qtdsBusca, setQtdsBusca] = useState<{[key: string]: number}>({});
-  
   const [nomeManual, setNomeManual] = useState('');
   const [qtdManual, setQtdManual] = useState(1);
   const [marcaManual, setMarcaManual] = useState('');
@@ -51,11 +50,9 @@ export default function PedidosCompra() {
     const qEstoque = query(collection(db, 'estoque'), where('setorId', '==', setorAtivo));
     const unsubEstoque = onSnapshot(qEstoque, snap => setEstoque(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 
-    // 🛡️ CORREÇÃO DE ÍNDICE: Filtramos aqui, mas ordenamos na memória abaixo
     const qHist = query(collection(db, 'pedidos_compra_logs'), where('setorId', '==', setorAtivo));
     const unsubHist = onSnapshot(qHist, snap => {
       const logs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      // Ordenação manual para evitar erro de índice do Firebase
       logs.sort((a, b) => (b.data?.toMillis() || 0) - (a.data?.toMillis() || 0));
       setHistorico(logs);
     });
@@ -63,12 +60,15 @@ export default function PedidosCompra() {
     return () => { unsubEstoque(); unsubHist(); };
   }, [setorAtivo]);
 
-  // Função de PDF (Sua lógica landscape com logo)
+  // 📄 GERADOR DE PDF (Corrigido para evitar o #NOVO)
   const gerarPDF = (dados: any, estilo: 'simples' | 'personalizado') => {
     try {
       const doc = new jsPDF('landscape');
       const azulCarvalho: [number, number, number] = [30, 41, 59];
-      const numero = dados.id ? dados.id.slice(-6).toUpperCase() : "NOVO";
+      
+      // Usa o ID real do banco ou um fallback seguro
+      const numero = dados.id ? dados.id.slice(-6).toUpperCase() : "SOLIC";
+      
       try { doc.addImage(logoCarvalho, 'WEBP', 14, 10, 35, 12); } catch (e) {}
 
       if (estilo === 'personalizado') {
@@ -78,7 +78,10 @@ export default function PedidosCompra() {
         doc.setTextColor(30, 41, 59); doc.setFontSize(12); doc.setFont("helvetica", "bold");
         doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 30);
         doc.setFontSize(9); doc.text("CNPJ: 31.362.302/0001-33", 14, 35);
-        doc.text(`UNIDADE: ${nomeUnidade.toUpperCase()} | DATA: ${new Date().toLocaleDateString()}`, 14, 40);
+        
+        // Trata a data se for objeto do Firebase ou data comum
+        const dataDoc = dados.data?.toDate ? dados.data.toDate().toLocaleDateString() : new Date().toLocaleDateString();
+        doc.text(`UNIDADE: ${nomeUnidade.toUpperCase()} | DATA: ${dataDoc}`, 14, 40);
       } else {
         doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.setFont("helvetica", "bold");
         doc.text("LISTA DE COTAÇÃO", 100, 20); doc.line(14, 38, 282, 38);
@@ -97,20 +100,38 @@ export default function PedidosCompra() {
   };
 
   const handleFinalizar = async (tipo: 'simples' | 'personalizado') => {
+    if (itens.length === 0) return;
     setLoading(true);
     try {
-      await addDoc(collection(db, 'pedidos_compra_logs'), {
-        setorId: setorAtivo, setorNome: nomeUnidade, data: serverTimestamp(),
-        itens, modelo: tipo, status: 'pendente'
-      });
-      gerarPDF({ itens }, tipo);
-      setItens([]); setModalEscolhaAberto(false);
-    } catch (error) { console.error(error); } finally { setLoading(false); }
+      const novoPedido = {
+        setorId: setorAtivo,
+        setorNome: nomeUnidade,
+        data: serverTimestamp(),
+        itens,
+        modelo: tipo,
+        status: 'pendente'
+      };
+
+      // 1. Salva no Banco e pega a referência
+      const docRef = await addDoc(collection(db, 'pedidos_compra_logs'), novoPedido);
+
+      // 2. Gera o PDF passando o ID real recém-criado
+      gerarPDF({ ...novoPedido, id: docRef.id, data: { toDate: () => new Date() } }, tipo);
+
+      // 3. Limpa a interface
+      setItens([]); 
+      setModalEscolhaAberto(false);
+    } catch (error) { 
+      console.error(error); 
+      alert("Erro ao salvar o pedido.");
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const addItemEstoque = (item: any) => {
     const qtd = qtdsBusca[item.id] || 1;
-    setItens([...itens, { id: item.id, nome: item.nome, quantidade: qtd, unidade: item.unidade || 'UN', marca: item.marca, ca: item.ca, ncm: item.ncm }]);
+    setItens([...itens, { id: item.id, nome: item.nome, quantidade: qtd, unidade: item.unidade || 'UN', marca: item.marca || '', ca: item.ca || '', ncm: item.ncm || '' }]);
     setBusca('');
   };
 
@@ -120,7 +141,6 @@ export default function PedidosCompra() {
     setNomeManual(''); setMarcaManual(''); setCaManual(''); setNcmManual('');
   };
 
-  // ✨ CORREÇÃO DEFINITIVA: Variável filtrados definida aqui
   const filtrados = estoque.filter(i => i.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 5);
 
   return (
@@ -181,7 +201,7 @@ export default function PedidosCompra() {
               </div>
               <Button onClick={() => setModalEscolhaAberto(true)} style={{ width: '100%', height: '60px', marginTop: '20px', backgroundColor: '#10b981' }}>GERAR PDF</Button>
             </>
-          ) : <p style={{textAlign: 'center', color: '#94a3b8', padding: '20px'}}>Vazio</p>}
+          ) : <p style={{textAlign: 'center', color: '#94a3b8', padding: '20px'}}>Carrinho vazio</p>}
         </div>
       </div>
 
@@ -192,7 +212,7 @@ export default function PedidosCompra() {
             <div key={h.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <strong style={{ display: 'block', fontSize: '14px' }}>Pedido #{h.id.slice(-5).toUpperCase()}</strong>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>{h.data?.toDate().toLocaleDateString('pt-BR')} - {h.itens.length} itens</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{h.data?.toDate ? h.data.toDate().toLocaleDateString('pt-BR') : 'Data Indisponível'} - {h.itens.length} itens</span>
                 <div style={{fontSize:'10px', marginTop: '5px', color: h.status === 'recebido' ? '#10b981' : '#f59e0b', fontWeight: 'bold'}}>
                   {h.status === 'recebido' ? '✅ RECEBIDO' : '⏳ AGUARDANDO'}
                 </div>
@@ -212,7 +232,9 @@ export default function PedidosCompra() {
              <h3 style={{marginBottom:'20px'}}>Tipo de PDF</h3>
              <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
                 <Button onClick={() => handleFinalizar('simples')} style={{backgroundColor:'#f1f5f9', color:'#1e293b'}}>Lista Simples</Button>
-                <Button onClick={() => handleFinalizar('personalizado')}>Orçamento Formal</Button>
+                <Button onClick={() => handleFinalizar('personalizado')} disabled={loading}>
+                  {loading ? 'Processando...' : 'Orçamento Formal'}
+                </Button>
                 <button onClick={() => setModalEscolhaAberto(false)} style={{marginTop:'10px', background:'none', border:'none', color:'#94a3b8'}}>Cancelar</button>
              </div>
           </div>
