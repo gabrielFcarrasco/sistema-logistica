@@ -1,19 +1,18 @@
 // src/pages/PedidosCompra.tsx
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { collection, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// Importando a logo
 import logoCarvalho from '../assets/LogoLimpa.webp'; 
 
 import { 
   ShoppingCart, Plus, Trash2, Save, Search, 
   Shirt, FileDown, Package, FileText, ListChecks, X,
-  ListPlus // ✨ Ícone adicionado aqui para corrigir o erro
+  ListPlus 
 } from 'lucide-react';
 
 import Button from '../components/ui/Button';
@@ -26,6 +25,7 @@ interface ItemPedido {
   unidade: string;
   marca?: string;
   ca?: string;
+  ncm?: string; // ✨ Adicionado NCM
   funcionarioNome?: string;
   tamanho?: string;
 }
@@ -36,6 +36,7 @@ export default function PedidosCompra() {
   const [estoque, setEstoque] = useState<any[]>([]);
   const [funcionarios, setFuncionarios] = useState<any[]>([]);
   const [itens, setItens] = useState<ItemPedido[]>([]);
+  const [nomeUnidade, setNomeUnidade] = useState('Carregando...'); // ✨ Estado para o nome legível
 
   const [busca, setBusca] = useState('');
   const [qtdsBusca, setQtdsBusca] = useState<{[key: string]: number}>({});
@@ -49,91 +50,20 @@ export default function PedidosCompra() {
   const [loading, setLoading] = useState(false);
   const [modalEscolhaAberto, setModalEscolhaAberto] = useState(false);
 
-  // 📄 GERADOR DE PDF MULTI-ESTILO (Corrigido para Produção/Vite)
-  const gerarPDF = (estilo: 'simples' | 'personalizado') => {
-    try {
-      const doc = new jsPDF();
-      const azulCarvalho: [number, number, number] = [30, 41, 59];
-      const pedidoNumero = Date.now().toString().slice(-6);
-
-      // 1. Logotipo e Identificação
-      try {
-        doc.addImage(logoCarvalho, 'WEBP', 14, 10, 40, 15);
-      } catch (e) {
-        console.error("Logo não carregada no PDF", e);
+  // 1. Busca o nome real da unidade para o PDF
+  useEffect(() => {
+    if (!setorAtivo) return;
+    const buscarNomeUnidade = async () => {
+      const docRef = doc(db, 'setores', setorAtivo);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setNomeUnidade(docSnap.data().nome);
       }
+    };
+    buscarNomeUnidade();
+  }, [setorAtivo]);
 
-      if (estilo === 'personalizado') {
-        doc.setFillColor(...azulCarvalho);
-        doc.rect(140, 10, 56, 25, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(10);
-        doc.text("PEDIDO DE COMPRA", 145, 18);
-        doc.setFontSize(14);
-        doc.text(`#${pedidoNumero}`, 145, 28);
-
-        doc.setTextColor(30, 41, 59);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 35);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-        doc.text("CNPJ: 31.362.302/0001-33", 14, 40);
-        doc.text(`UNIDADE: ${setorAtivo.toUpperCase()} | DATA: ${new Date().toLocaleDateString()}`, 14, 45);
-      } else {
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text("LISTA DE COMPRAS - CARVALHO", 60, 20);
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Data: ${new Date().toLocaleDateString()} | Pedido: ${pedidoNumero}`, 14, 35);
-        doc.line(14, 38, 196, 38);
-      }
-
-      // 2. Tabela de Itens
-      const rows = itens.map(i => [
-        `${i.quantidade} ${i.unidade}`,
-        i.nome + (i.tamanho ? ` (Tam: ${i.tamanho})` : ''),
-        i.marca || '-',
-        i.funcionarioNome || 'ESTOQUE GERAL'
-      ]);
-
-      // 🛡️ Segurança para o autoTable no Build do Vite
-      const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
-      
-      renderTable(doc, {
-        startY: estilo === 'personalizado' ? 55 : 45,
-        head: [["QTD", "DESCRIÇÃO DO MATERIAL", "MARCA/REF", "DESTINO FINAL"]],
-        body: rows,
-        theme: estilo === 'personalizado' ? 'grid' : 'plain',
-        headStyles: { 
-          fillColor: estilo === 'personalizado' ? azulCarvalho : [241, 245, 249],
-          textColor: estilo === 'personalizado' ? [255, 255, 255] : [0, 0, 0],
-          fontStyle: 'bold'
-        },
-        styles: { fontSize: 9, cellPadding: 5 },
-        alternateRowStyles: { fillColor: [248, 250, 252] }
-      });
-
-      const finalY = (doc as any).lastAutoTable.finalY + 20;
-      doc.setTextColor(100, 116, 139);
-      doc.setFontSize(8);
-      doc.text("Documento gerado via Sistema Interno de Gestão de EPIs - Carvalho", 105, 285, { align: 'center' });
-
-      if (estilo === 'personalizado') {
-        doc.setDrawColor(200, 200, 200);
-        doc.line(14, finalY + 15, 80, finalY + 15);
-        doc.text("Assinatura do Solicitante", 14, finalY + 20);
-      }
-
-      doc.save(`Pedido_Carvalho_${pedidoNumero}.pdf`);
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao gerar PDF.");
-    }
-  };
-
+  // 2. Escuta Estoque e Funcionários
   useEffect(() => {
     if (!setorAtivo) return;
     const q1 = query(collection(db, 'estoque'), where('setorId', '==', setorAtivo));
@@ -143,6 +73,78 @@ export default function PedidosCompra() {
     return () => { unsub1(); unsub2(); };
   }, [setorAtivo]);
 
+  // 📄 GERADOR DE PDF PROFISSIONAL
+  const gerarPDF = (estilo: 'simples' | 'personalizado') => {
+    try {
+      const doc = new jsPDF('landscape'); // Mudado para Paisagem para caber mais colunas
+      const azulCarvalho: [number, number, number] = [30, 41, 59];
+      const pedidoNumero = Date.now().toString().slice(-6);
+
+      try {
+        doc.addImage(logoCarvalho, 'WEBP', 14, 10, 35, 12);
+      } catch (e) { console.error(e); }
+
+      if (estilo === 'personalizado') {
+        doc.setFillColor(...azulCarvalho);
+        doc.rect(230, 10, 56, 25, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.text("PEDIDO DE COMPRA", 235, 18);
+        doc.setFontSize(14);
+        doc.text(`#${pedidoNumero}`, 235, 28);
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 30);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text("CNPJ: 31.362.302/0001-33", 14, 35);
+        doc.text(`UNIDADE: ${nomeUnidade.toUpperCase()} | DATA: ${new Date().toLocaleDateString()}`, 14, 40);
+      } else {
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.text("LISTA DE COMPRAS - CARVALHO", 100, 20);
+        doc.setFontSize(10);
+        doc.text(`Unidade: ${nomeUnidade} | Data: ${new Date().toLocaleDateString()} | Pedido: ${pedidoNumero}`, 14, 35);
+        doc.line(14, 38, 282, 38);
+      }
+
+      // 🛠️ TABELA COM CA E NCM
+      const rows = itens.map(i => [
+        `${i.quantidade} ${i.unidade}`,
+        i.nome + (i.tamanho ? ` (Tam: ${i.tamanho})` : ''),
+        i.marca || '-',
+        i.ca || '-', // ✨ Coluna C.A.
+        i.ncm || '-', // ✨ Coluna NCM
+        i.funcionarioNome || 'ESTOQUE GERAL'
+      ]);
+
+      const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
+      
+      renderTable(doc, {
+        startY: 45,
+        head: [["QTD", "DESCRIÇÃO DO MATERIAL", "MARCA/REF", "C.A.", "NCM", "DESTINO FINAL"]],
+        body: rows,
+        theme: estilo === 'personalizado' ? 'grid' : 'plain',
+        headStyles: { 
+          fillColor: estilo === 'personalizado' ? azulCarvalho : [241, 245, 249],
+          textColor: estilo === 'personalizado' ? [255, 255, 255] : [0, 0, 0],
+          halign: 'center'
+        },
+        styles: { fontSize: 8, cellPadding: 4 },
+        columnStyles: {
+          0: { halign: 'center', fontStyle: 'bold' },
+          3: { halign: 'center' },
+          4: { halign: 'center' }
+        }
+      });
+
+      doc.save(`Pedido_Carvalho_${nomeUnidade}_${pedidoNumero}.pdf`);
+    } catch (err) { alert("Erro ao gerar PDF."); }
+  };
+
   const addItem = (item: any) => {
     const qtdEscolhida = qtdsBusca[item.id] || 1;
     setItens([...itens, {
@@ -150,11 +152,11 @@ export default function PedidosCompra() {
       nome: item.nome,
       quantidade: qtdEscolhida,
       unidade: item.unidade || 'UN',
-      marca: item.marca,
-      ca: item.ca
+      marca: item.marca || '',
+      ca: item.ca || '',
+      ncm: item.ncm || '' // ✨ Puxa NCM do estoque
     }]);
     setBusca('');
-    setQtdsBusca(prev => ({ ...prev, [item.id]: 1 }));
   };
 
   const addManual = () => {
@@ -183,6 +185,7 @@ export default function PedidosCompra() {
     try {
       await addDoc(collection(db, 'pedidos_compra_logs'), {
         setorId: setorAtivo,
+        setorNome: nomeUnidade,
         data: serverTimestamp(),
         itens,
         modelo: tipo
@@ -190,11 +193,7 @@ export default function PedidosCompra() {
       gerarPDF(tipo);
       setItens([]);
       setModalEscolhaAberto(false);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
   const filtrados = estoque.filter(i => i.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 5);
@@ -204,13 +203,16 @@ export default function PedidosCompra() {
       
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '25px' }}>
         <ShoppingCart size={28} color="var(--cor-primaria)" />
-        <h1 style={{ fontSize: '24px', color: '#1e293b', margin: 0, fontWeight: 'bold' }}>Pedidos de Compra</h1>
+        <div>
+          <h1 style={{ fontSize: '24px', color: '#1e293b', margin: 0, fontWeight: 'bold' }}>Pedidos de Compra</h1>
+          <span style={{ fontSize: '13px', color: '#64748b' }}>Unidade atual: <strong>{nomeUnidade}</strong></span>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* BUSCA */}
+          {/* BUSCA NO ESTOQUE */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#3b82f6' }}>
               <Search size={18} /> Adicionar do Estoque
@@ -222,7 +224,7 @@ export default function PedidosCompra() {
                   <div key={item.id} style={{ padding: '12px 15px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                       <span style={{ fontSize: '14px', fontWeight: 'bold' }}>{item.nome}</span>
-                      <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 'bold' }}>Saldo: {item.quantidade}</span>
+                      <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 'bold' }}>Saldo: {item.quantidade}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <input type="number" min="1" value={qtdsBusca[item.id] || 1} onChange={e => setQtdsBusca({ ...qtdsBusca, [item.id]: Number(e.target.value) })} style={{ width: '70px', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
