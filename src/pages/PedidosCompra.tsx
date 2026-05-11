@@ -1,20 +1,16 @@
 // src/pages/PedidosCompra.tsx
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, getDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
-
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-
 import logoCarvalho from '../assets/LogoLimpa.webp'; 
-
 import { 
   ShoppingCart, Plus, Trash2, Save, Search, 
-  Shirt, FileDown, Package, FileText, ListChecks, X,
-  ListPlus 
+  FileDown, Package, FileText, ListChecks, X,
+  ListPlus, Tag, ShieldCheck, Hash, History, RefreshCw
 } from 'lucide-react';
-
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
@@ -25,162 +21,79 @@ interface ItemPedido {
   unidade: string;
   marca?: string;
   ca?: string;
-  ncm?: string; // ✨ Adicionado NCM
-  funcionarioNome?: string;
-  tamanho?: string;
+  ncm?: string;
 }
 
 export default function PedidosCompra() {
   const { setorAtivo } = useOutletContext<{ setorAtivo: string }>();
-
   const [estoque, setEstoque] = useState<any[]>([]);
-  const [funcionarios, setFuncionarios] = useState<any[]>([]);
   const [itens, setItens] = useState<ItemPedido[]>([]);
-  const [nomeUnidade, setNomeUnidade] = useState('Carregando...'); // ✨ Estado para o nome legível
+  const [historico, setHistorico] = useState<any[]>([]); // ✨ Novo: Lista de pedidos feitos
+  const [nomeUnidade, setNomeUnidade] = useState('Carregando...');
 
   const [busca, setBusca] = useState('');
   const [qtdsBusca, setQtdsBusca] = useState<{[key: string]: number}>({});
-  
   const [nomeManual, setNomeManual] = useState('');
   const [qtdManual, setQtdManual] = useState(1);
+  const [marcaManual, setMarcaManual] = useState('');
+  const [caManual, setCaManual] = useState('');
+  const [ncmManual, setNcmManual] = useState('');
+  const [unidManual, setUnidManual] = useState('UN');
 
-  const [funcId, setFuncId] = useState('');
-  const [tipoVestuario, setTipoVestuario] = useState('Camisa');
-  
   const [loading, setLoading] = useState(false);
   const [modalEscolhaAberto, setModalEscolhaAberto] = useState(false);
 
-  // 1. Busca o nome real da unidade para o PDF
   useEffect(() => {
     if (!setorAtivo) return;
-    const buscarNomeUnidade = async () => {
-      const docRef = doc(db, 'setores', setorAtivo);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setNomeUnidade(docSnap.data().nome);
-      }
-    };
-    buscarNomeUnidade();
+    getDoc(doc(db, 'setores', setorAtivo)).then(d => { if (d.exists()) setNomeUnidade(d.data().nome); });
+
+    const qEstoque = query(collection(db, 'estoque'), where('setorId', '==', setorAtivo));
+    const unsubEstoque = onSnapshot(qEstoque, snap => setEstoque(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+    // ✨ Busca o histórico de pedidos da unidade
+    const qHist = query(collection(db, 'pedidos_compra_logs'), where('setorId', '==', setorAtivo), orderBy('data', 'desc'));
+    const unsubHist = onSnapshot(qHist, snap => setHistorico(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+    return () => { unsubEstoque(); unsubHist(); };
   }, [setorAtivo]);
 
-  // 2. Escuta Estoque e Funcionários
-  useEffect(() => {
-    if (!setorAtivo) return;
-    const q1 = query(collection(db, 'estoque'), where('setorId', '==', setorAtivo));
-    const q2 = query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo));
-    const unsub1 = onSnapshot(q1, snap => setEstoque(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsub2 = onSnapshot(q2, snap => setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => { unsub1(); unsub2(); };
-  }, [setorAtivo]);
-
-  // 📄 GERADOR DE PDF PROFISSIONAL
-  const gerarPDF = (estilo: 'simples' | 'personalizado') => {
+  // Função de PDF adaptada para aceitar dados externos (para 2ª via)
+  const gerarPDF = (dados: any, estilo: 'simples' | 'personalizado') => {
     try {
-      const doc = new jsPDF('landscape'); // Mudado para Paisagem para caber mais colunas
+      const doc = new jsPDF('landscape');
       const azulCarvalho: [number, number, number] = [30, 41, 59];
-      const pedidoNumero = Date.now().toString().slice(-6);
+      const numero = dados.id ? dados.id.slice(-6).toUpperCase() : "NOVO";
 
-      try {
-        doc.addImage(logoCarvalho, 'WEBP', 14, 10, 35, 12);
-      } catch (e) { console.error(e); }
+      try { doc.addImage(logoCarvalho, 'WEBP', 14, 10, 35, 12); } catch (e) {}
 
       if (estilo === 'personalizado') {
-        doc.setFillColor(...azulCarvalho);
-        doc.rect(230, 10, 56, 25, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(10);
-        doc.text("PEDIDO DE COMPRA", 235, 18);
-        doc.setFontSize(14);
-        doc.text(`#${pedidoNumero}`, 235, 28);
-
-        doc.setTextColor(30, 41, 59);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
+        doc.setFillColor(...azulCarvalho); doc.rect(230, 10, 56, 25, "F");
+        doc.setTextColor(255, 255, 255); doc.setFontSize(10); doc.text("SOLICITAÇÃO DE COMPRA", 233, 18);
+        doc.setFontSize(14); doc.text(`#${numero}`, 233, 28);
+        doc.setTextColor(30, 41, 59); doc.setFontSize(12); doc.setFont("helvetica", "bold");
         doc.text("CARVALHO FUNILARIA E PINTURAS LTDA", 14, 30);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9); doc.setFont("helvetica", "normal");
         doc.text("CNPJ: 31.362.302/0001-33", 14, 35);
-        doc.text(`UNIDADE: ${nomeUnidade.toUpperCase()} | DATA: ${new Date().toLocaleDateString()}`, 14, 40);
+        doc.text(`UNIDADE: ${nomeUnidade.toUpperCase()} | DATA: ${dados.data ? dados.data.toDate().toLocaleDateString() : new Date().toLocaleDateString()}`, 14, 40);
       } else {
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text("LISTA DE COMPRAS - CARVALHO", 100, 20);
-        doc.setFontSize(10);
-        doc.text(`Unidade: ${nomeUnidade} | Data: ${new Date().toLocaleDateString()} | Pedido: ${pedidoNumero}`, 14, 35);
-        doc.line(14, 38, 282, 38);
+        doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.setFont("helvetica", "bold");
+        doc.text("LISTA DE COTAÇÃO", 100, 20); doc.setFontSize(10);
+        doc.text(`Unidade: ${nomeUnidade} | Pedido: ${numero}`, 14, 35); doc.line(14, 38, 282, 38);
       }
 
-      // 🛠️ TABELA COM CA E NCM
-      const rows = itens.map(i => [
-        `${i.quantidade} ${i.unidade}`,
-        i.nome + (i.tamanho ? ` (Tam: ${i.tamanho})` : ''),
-        i.marca || '-',
-        i.ca || '-', // ✨ Coluna C.A.
-        i.ncm || '-', // ✨ Coluna NCM
-        i.funcionarioNome || 'ESTOQUE GERAL'
-      ]);
-
+      const rows = dados.itens.map((i: any) => [`${i.quantidade} ${i.unidade}`, i.nome, i.marca || '-', i.ca || '-', i.ncm || '-']);
       const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
-      
       renderTable(doc, {
-        startY: 45,
-        head: [["QTD", "DESCRIÇÃO DO MATERIAL", "MARCA/REF", "C.A.", "NCM", "DESTINO FINAL"]],
-        body: rows,
+        startY: 45, head: [["QTD", "DESCRIÇÃO", "MARCA/REF", "C.A.", "NCM"]], body: rows,
         theme: estilo === 'personalizado' ? 'grid' : 'plain',
-        headStyles: { 
-          fillColor: estilo === 'personalizado' ? azulCarvalho : [241, 245, 249],
-          textColor: estilo === 'personalizado' ? [255, 255, 255] : [0, 0, 0],
-          halign: 'center'
-        },
-        styles: { fontSize: 8, cellPadding: 4 },
-        columnStyles: {
-          0: { halign: 'center', fontStyle: 'bold' },
-          3: { halign: 'center' },
-          4: { halign: 'center' }
-        }
+        headStyles: { fillColor: estilo === 'personalizado' ? azulCarvalho : [241, 245, 249], textColor: estilo === 'personalizado' ? 255 : 0 },
+        styles: { fontSize: 9, cellPadding: 5 }
       });
-
-      doc.save(`Pedido_Carvalho_${nomeUnidade}_${pedidoNumero}.pdf`);
+      doc.save(`Pedido_Carvalho_${numero}.pdf`);
     } catch (err) { alert("Erro ao gerar PDF."); }
   };
 
-  const addItem = (item: any) => {
-    const qtdEscolhida = qtdsBusca[item.id] || 1;
-    setItens([...itens, {
-      id: Date.now().toString(),
-      nome: item.nome,
-      quantidade: qtdEscolhida,
-      unidade: item.unidade || 'UN',
-      marca: item.marca || '',
-      ca: item.ca || '',
-      ncm: item.ncm || '' // ✨ Puxa NCM do estoque
-    }]);
-    setBusca('');
-  };
-
-  const addManual = () => {
-    if (!nomeManual) return;
-    setItens([...itens, { id: Date.now().toString(), nome: nomeManual, quantidade: qtdManual, unidade: 'UN' }]);
-    setNomeManual(''); setQtdManual(1);
-  };
-
-  const addUniforme = () => {
-    const f = funcionarios.find(x => x.id === funcId);
-    if (!f) return;
-    const isBota = tipoVestuario === 'Bota';
-    setItens([...itens, {
-      id: Date.now().toString(),
-      nome: `${tipoVestuario} de Segurança`,
-      quantidade: 1,
-      unidade: isBota ? 'PAR' : 'UN',
-      funcionarioNome: f.nome,
-      tamanho: isBota ? f.tamanhoCalcado : f.tamanhoUniforme
-    }]);
-    setFuncId('');
-  };
-
-  const handleFinalizarEProcessar = async (tipo: 'simples' | 'personalizado') => {
+  const handleFinalizar = async (tipo: 'simples' | 'personalizado') => {
     setLoading(true);
     try {
       await addDoc(collection(db, 'pedidos_compra_logs'), {
@@ -188,47 +101,51 @@ export default function PedidosCompra() {
         setorNome: nomeUnidade,
         data: serverTimestamp(),
         itens,
-        modelo: tipo
+        modelo: tipo,
+        status: 'pendente' // ✨ Status inicial
       });
-      gerarPDF(tipo);
+      gerarPDF({ itens }, tipo);
       setItens([]);
       setModalEscolhaAberto(false);
     } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  const filtrados = estoque.filter(i => i.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 5);
+  const addItemEstoque = (item: any) => {
+    const qtd = qtdsBusca[item.id] || 1;
+    setItens([...itens, { id: item.id, nome: item.nome, quantidade: qtd, unidade: item.unidade || 'UN', marca: item.marca || '', ca: item.ca || '', ncm: item.ncm || '' }]);
+    setBusca('');
+  };
+
+  const addManual = () => {
+    if (!nomeManual) return;
+    setItens([...itens, { id: `man-${Date.now()}`, nome: nomeManual, quantidade: qtdManual, unidade: unidManual, marca: marcaManual, ca: caManual, ncm: ncmManual }]);
+    setNomeManual(''); setMarcaManual(''); setCaManual(''); setNcmManual('');
+  };
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '15px' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '15px' }}>
       
+      {/* HEADER E FORMS (SEUS CAMPOS ORIGINAIS) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '25px' }}>
         <ShoppingCart size={28} color="var(--cor-primaria)" />
-        <div>
-          <h1 style={{ fontSize: '24px', color: '#1e293b', margin: 0, fontWeight: 'bold' }}>Pedidos de Compra</h1>
-          <span style={{ fontSize: '13px', color: '#64748b' }}>Unidade atual: <strong>{nomeUnidade}</strong></span>
-        </div>
+        <h1 style={{ fontSize: '24px', color: '#1e293b', margin: 0, fontWeight: 'bold' }}>Solicitação de Compra</h1>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-        
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* BUSCA NO ESTOQUE */}
+          
+          {/* BUSCA ESTOQUE (SEU CÓDIGO) */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#3b82f6' }}>
-              <Search size={18} /> Adicionar do Estoque
-            </h3>
-            <Input placeholder="O que deseja pedir?" value={busca} onChange={e => setBusca(e.target.value)} />
+            <h3 style={{ fontSize: '15px', marginBottom: '15px', color: '#3b82f6' }}><Search size={18} /> Adicionar do Estoque</h3>
+            <Input placeholder="Pesquisar material..." value={busca} onChange={e => setBusca(e.target.value)} />
             {busca && (
               <div style={{ marginTop: '10px', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
                 {filtrados.map(item => (
-                  <div key={item.id} style={{ padding: '12px 15px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: 'bold' }}>{item.nome}</span>
-                      <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 'bold' }}>Saldo: {item.quantidade}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <input type="number" min="1" value={qtdsBusca[item.id] || 1} onChange={e => setQtdsBusca({ ...qtdsBusca, [item.id]: Number(e.target.value) })} style={{ width: '70px', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-                      <Button onClick={() => addItem(item)} style={{ flex: 1, height: '40px' }}><Plus size={16} /> Incluir</Button>
+                  <div key={item.id} style={{ padding: '12px 15px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{fontSize: '14px', fontWeight: 'bold'}}>{item.nome}</span>
+                    <div style={{display:'flex', gap: '5px'}}>
+                      <input type="number" min="1" defaultValue="1" onChange={e => setQtdsBusca({...qtdsBusca, [item.id]: Number(e.target.value)})} style={{width: '50px', border: '1px solid #ccc', borderRadius: '4px'}} />
+                      <Button onClick={() => addItemEstoque(item)} style={{padding: '5px'}}><Plus size={16}/></Button>
                     </div>
                   </div>
                 ))}
@@ -236,103 +153,78 @@ export default function PedidosCompra() {
             )}
           </div>
 
-          {/* UNIFORME */}
-          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#8b5cf6' }}>
-              <Shirt size={18} /> Uniforme Individual
-            </h3>
-            <select value={funcId} onChange={e => setFuncId(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', marginBottom: '10px', outline: 'none' }}>
-              <option value="">Selecione o Colaborador</option>
-              {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
-            </select>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <select value={tipoVestuario} onChange={e => setTipoVestuario(e.target.value)} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', outline: 'none' }}>
-                <option value="Camisa">Camisa</option><option value="Calça">Calça</option><option value="Bota">Bota</option>
-              </select>
-              <Button onClick={addUniforme} style={{ backgroundColor: '#8b5cf6' }}><Plus size={20}/></Button>
-            </div>
-          </div>
-
-          {/* MANUAL */}
-          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b' }}>
-              <ListPlus size={18} /> Entrada Manual
-            </h3>
-            <Input placeholder="Nome do material..." value={nomeManual} onChange={e => setNomeManual(e.target.value)} />
-            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              <input type="number" value={qtdManual} onChange={e => setQtdManual(Number(e.target.value))} style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-              <Button onClick={addManual} style={{ flex: 1, backgroundColor: '#64748b' }}>Adicionar</Button>
+          {/* ENTRADA MANUAL (SEU CÓDIGO) */}
+          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', borderTop: '4px solid #64748b' }}>
+            <h3 style={{ fontSize: '15px', marginBottom: '15px' }}><ListPlus size={18} /> Novo Item / Cotação</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <Input label="Descrição *" value={nomeManual} onChange={e => setNomeManual(e.target.value)} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                 <Input label="Marca" value={marcaManual} onChange={e => setMarcaManual(e.target.value)} icone={<Tag size={14}/>} />
+                 <Input label="Qtd" type="number" value={qtdManual} onChange={e => setQtdManual(Number(e.target.value))} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                 <Input label="C.A." value={caManual} onChange={e => setCaManual(e.target.value)} icone={<ShieldCheck size={14}/>} />
+                 <Input label="NCM" value={ncmManual} onChange={e => setNcmManual(e.target.value)} icone={<Hash size={14}/>} />
+              </div>
+              <Button onClick={addManual} style={{ backgroundColor: '#475569' }}>Adicionar à Lista</Button>
             </div>
           </div>
         </div>
 
-        {/* RESUMO E FINALIZAÇÃO */}
-        <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', height: 'fit-content' }}>
-          <h3 style={{ fontSize: '18px', marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px', fontWeight: 'bold' }}>Itens Separados ({itens.length})</h3>
-          
-          {itens.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-              <ShoppingCart size={48} style={{ margin: '0 auto 15px', opacity: 0.2 }} />
-              <p>O lote de pedido está vazio.</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {itens.map((i, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: '14px', fontWeight: 'bold', display: 'block' }}>{i.quantidade}x {i.nome}</span>
-                    {i.funcionarioNome && <span style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: 'bold' }}>Destino: {i.funcionarioNome}</span>}
+        {/* LISTA ATUAL (SEU CÓDIGO) */}
+        <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ borderBottom: '2px solid #f1f5f9', paddingBottom: '10px' }}>Itens Solicitados ({itens.length})</h3>
+          {itens.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+                {itens.map((i, idx) => (
+                  <div key={idx} style={{ padding: '10px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{fontSize:'13px'}}><strong>{i.quantidade}x</strong> {i.nome}</span>
+                    <button onClick={() => setItens(itens.filter((_, x) => x !== idx))} style={{ color: '#ef4444', border: 'none', background: 'none' }}><Trash2 size={16}/></button>
                   </div>
-                  <button onClick={() => setItens(itens.filter((_, x) => x !== idx))} style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }}><Trash2 size={18}/></button>
-                </div>
-              ))}
-              <Button 
-                onClick={() => setModalEscolhaAberto(true)} 
-                style={{ width: '100%', height: '60px', marginTop: '15px', backgroundColor: '#10b981', fontSize: '16px', fontWeight: 'bold' }}
-              >
-                <Save size={20} style={{marginRight: '8px'}}/> FINALIZAR LOTE
-              </Button>
-            </div>
-          )}
+                ))}
+              </div>
+              <Button onClick={() => setModalEscolhaAberto(true)} style={{ width: '100%', height: '60px', marginTop: '20px', backgroundColor: '#10b981' }}>GERAR PDF</Button>
+            </>
+          ) : <p style={{textAlign: 'center', color: '#94a3b8', padding: '20px'}}>Carrinho vazio</p>}
         </div>
       </div>
 
-      {/* 🛠️ MODAL DE ESCOLHA DE PDF */}
-      {modalEscolhaAberto && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.9)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}>
-          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '400px', borderRadius: '24px', padding: '30px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>Gerar PDF</h3>
-              <button onClick={() => setModalEscolhaAberto(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={24}/></button>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <button 
-                onClick={() => handleFinalizarEProcessar('simples')}
-                style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', cursor: 'pointer', textAlign: 'left' }}
-              >
-                <div style={{ backgroundColor: '#e2e8f0', padding: '10px', borderRadius: '12px' }}><ListChecks size={24} color="#64748b"/></div>
-                <div>
-                  <strong style={{ display: 'block', fontSize: '15px' }}>Lista Simples</strong>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Conferência interna.</span>
+      {/* ✨ SEÇÃO NOVA: HISTÓRICO DE PEDIDOS */}
+      <div style={{ marginTop: '50px' }}>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#475569', marginBottom: '15px' }}><History size={20}/> Histórico de Solicitações</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '15px' }}>
+          {historico.map(h => (
+            <div key={h.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <strong style={{ display: 'block', fontSize: '14px' }}>Pedido #{h.id.slice(-5).toUpperCase()}</strong>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{h.data?.toDate().toLocaleDateString('pt-BR')} - {h.itens.length} itens</span>
+                <div style={{fontSize:'10px', marginTop: '5px', color: h.status === 'recebido' ? '#10b981' : '#f59e0b', fontWeight: 'bold'}}>
+                  {h.status === 'recebido' ? '✅ RECEBIDO NO ESTOQUE' : '⏳ AGUARDANDO ENTREGA'}
                 </div>
-              </button>
+              </div>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <button onClick={() => gerarPDF(h, 'personalizado')} title="Baixar 2ª Via" style={{ background: '#f1f5f9', border: 'none', padding: '8px', borderRadius: '8px', color: '#3b82f6' }}><FileDown size={18}/></button>
+                <button onClick={async () => { if(confirm("Excluir registro?")) await deleteDoc(doc(db, 'pedidos_compra_logs', h.id)) }} style={{ background: '#fef2f2', border: 'none', padding: '8px', borderRadius: '8px', color: '#ef4444' }}><Trash2 size={18}/></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-              <button 
-                onClick={() => handleFinalizarEProcessar('personalizado')}
-                style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '20px', borderRadius: '16px', border: '2px solid #dcfce7', backgroundColor: '#f0fdf4', cursor: 'pointer', textAlign: 'left' }}
-              >
-                <div style={{ backgroundColor: '#10b981', padding: '10px', borderRadius: '12px' }}><FileText size={24} color="white"/></div>
-                <div>
-                  <strong style={{ display: 'block', fontSize: '15px', color: '#065f46' }}>Orçamento Formal</strong>
-                  <span style={{ fontSize: '12px', color: '#059669' }}>Com logo e CNPJ.</span>
-                </div>
-              </button>
-            </div>
+      {/* MODAL DE ESCOLHA (SEU CÓDIGO) */}
+      {modalEscolhaAberto && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.9)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '400px' }}>
+             <h3 style={{marginBottom:'20px'}}>Escolha o Estilo do PDF</h3>
+             <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
+                <Button onClick={() => handleFinalizar('simples')} style={{backgroundColor:'#f1f5f9', color:'#1e293b'}}>Lista Simples</Button>
+                <Button onClick={() => handleFinalizar('personalizado')}>Orçamento Formal</Button>
+                <button onClick={() => setModalEscolhaAberto(false)} style={{marginTop:'10px', border:'none', background:'none', color:'#94a3b8'}}>Cancelar</button>
+             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }
