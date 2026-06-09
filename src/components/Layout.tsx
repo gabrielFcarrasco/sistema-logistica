@@ -1,3 +1,4 @@
+// src/components/Layout.tsx
 import { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -8,7 +9,8 @@ import Carvalho from '../assets/LogoLimpa.webp';
 import styles from './Layout.module.css';
 import { 
   LayoutDashboard, Package, Users, ClipboardCheck, LogOut, 
-  Building2, Menu, X, ShieldCheck, ShieldAlert, ShoppingCart, ArrowDownToLine
+  Building2, Menu, X, ShieldCheck, ShieldAlert, ShoppingCart, 
+  ArrowDownToLine, Paintbrush // ✨ Importado Paintbrush para o menu
 } from 'lucide-react';
 
 interface Setor {
@@ -31,33 +33,25 @@ export default function Layout() {
 
   const [podeInstalar, setPodeInstalar] = useState<any>(null);
 
-useEffect(() => {
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    setPodeInstalar(e);
-  });
-}, []);
-
-const instalarApp = () => {
-  if (!podeInstalar) return;
-  podeInstalar.prompt();
-  podeInstalar.userChoice.then((choice: any) => {
-    if (choice.outcome === 'accepted') setPodeInstalar(null);
-  });
-};
-
-// No seu menu lateral (sidebar), antes do botão Sair, adicione:
-{podeInstalar && (
-  <li>
-    <button onClick={instalarApp} className={styles.menuItem} style={{ color: '#10b981', border: 'none', background: 'none', width: '100%', textAlign: 'left', cursor: 'pointer' }}>
-      <ArrowDownToLine size={20} style={{ marginRight: '12px' }} /> Instalar Aplicativo
-    </button>
-  </li>
-)}
-
-  // Carrega os dados de quem logou (Vamos usar isso quando o Login estiver pronto)
+  // Captura o evento de instalação do PWA
   useEffect(() => {
-    setUserLevel(localStorage.getItem('userLevel') || 'socio'); // Temporário como 'socio' para você conseguir ver o menu
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setPodeInstalar(e);
+    });
+  }, []);
+
+  const instalarApp = () => {
+    if (!podeInstalar) return;
+    podeInstalar.prompt();
+    podeInstalar.userChoice.then((choice: any) => {
+      if (choice.outcome === 'accepted') setPodeInstalar(null);
+    });
+  };
+
+  // Carrega os dados de quem logou
+  useEffect(() => {
+    setUserLevel(localStorage.getItem('userLevel') || 'socio');
     setUserName(localStorage.getItem('userName') || 'Administrador');
   }, []);
 
@@ -86,32 +80,30 @@ const instalarApp = () => {
   return (
     <div className={styles.container}>
 
-  {/* 📱 BARRA SUPERIOR MOBILE (Só aparece em telas pequenas) */}
-  <div className={styles.mobileTopbar}>
-    <div style={{ display: 'flex', alignItems: 'center' }}>
-      <img 
-        src={Carvalho} 
-        alt="Logo Carvalho" 
-        style={{ height: '35px', width: 'auto', objectFit: 'contain' }} 
-      />
-    </div>
-    
-    <button className={styles.btnHamburger} onClick={() => setMenuAberto(true)}>
-      <Menu size={28} />
-    </button>
-  </div>
+      {/* 📱 BARRA SUPERIOR MOBILE */}
+      <div className={styles.mobileTopbar}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <img 
+            src={Carvalho} 
+            alt="Logo Carvalho" 
+            style={{ height: '35px', width: 'auto', objectFit: 'contain' }} 
+          />
+        </div>
+        <button className={styles.btnHamburger} onClick={() => setMenuAberto(true)}>
+          <Menu size={28} />
+        </button>
+      </div>
 
-      {/* OVERLAY: Fundo escuro para fechar o menu ao clicar fora */}
+      {/* OVERLAY MOBILE */}
       <div 
         className={`${styles.overlay} ${menuAberto ? styles.ativo : ''}`} 
         onClick={() => setMenuAberto(false)}
       />
 
-      {/* 🖥️ MENU LATERAL */}
+      {/* 🖥️ MENU LATERAL (SIDEBAR) */}
       <nav className={`${styles.sidebar} ${menuAberto ? styles.aberto : ''}`}>
         <div className={styles.logoContainer}>
           <img src={logoCarvalho} alt="Logo Carvalho" className={styles.logo} />
-          {/* Botão de Fechar que só aparece no celular */}
           <button className={styles.btnFecharMobile} onClick={() => setMenuAberto(false)}>
             <X size={24} />
           </button>
@@ -125,7 +117,7 @@ const instalarApp = () => {
           </span>
         </div>
 
-        {/* Seletor de Unidades (Só habilita se for Sócio, ou trava na unidade do Responsável) */}
+        {/* Seletor de Unidades */}
         <div style={{ padding: '0 20px 20px 20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '8px' }}>
             <Building2 size={16} /> Unidade Atual
@@ -133,7 +125,7 @@ const instalarApp = () => {
           <select 
             value={setorAtivo}
             onChange={(e) => setSetorAtivo(e.target.value)}
-            disabled={userLevel !== 'socio'} // Se não for sócio, ele não pode ficar fuçando no setor dos outros pelo menu principal
+            disabled={userLevel !== 'socio'}
             style={{ width: '100%', padding: '12px', borderRadius: '6px', backgroundColor: userLevel === 'socio' ? '#334155' : '#1e293b', color: 'white', border: '1px solid #475569', outline: 'none', cursor: userLevel === 'socio' ? 'pointer' : 'not-allowed', fontSize: '14px' }}
           >
             {setores.length === 0 ? (
@@ -172,6 +164,13 @@ const instalarApp = () => {
             </Link>
           </li>
 
+          {/* ✨ NOVA ROTA: Prestação de Serviços (Pintura/Jateamento) */}
+          <li>
+            <Link to="/prestacao-servicos" className={styles.menuItem} style={{ color: '#a78bfa' }}>
+              <Paintbrush size={20} style={{ marginRight: '12px' }} /> Prestação de Serviços
+            </Link>
+          </li>
+
           <li>
             <Link to="/pedidos-compra" className={styles.menuItem} style={{ color: '#10b981' }}>
               <ShoppingCart size={20} style={{ marginRight: '12px' }} /> Pedidos de Compra
@@ -184,7 +183,6 @@ const instalarApp = () => {
             </Link>
           </li>
           
-          {/* 🔒 Trava: Apenas Sócios veem este botão */}
           {userLevel === 'socio' && (
             <li>
               <Link to="/acessos" className={styles.menuItem} style={{ color: '#a78bfa' }}>
@@ -194,7 +192,18 @@ const instalarApp = () => {
           )}
         </ul>
 
-        <button onClick={fazerLogout} className={styles.btnSair} style={{ background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: 'inherit' }}>
+        {/* 📱 BOTÃO DE INSTALAÇÃO DO APP (Corrigido para ficar dentro da Sidebar) */}
+        {podeInstalar && (
+          <button 
+            onClick={instalarApp} 
+            className={styles.menuItem} 
+            style={{ color: '#10b981', border: 'none', background: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 20px', marginTop: 'auto' }}
+          >
+            <ArrowDownToLine size={20} style={{ marginRight: '12px' }} /> Instalar Aplicativo
+          </button>
+        )}
+
+        <button onClick={fazerLogout} className={styles.btnSair} style={{ background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: 'inherit', marginTop: podeInstalar ? '0' : 'auto' }}>
           <LogOut size={20} style={{ marginRight: '12px' }} /> Sair do Sistema
         </button>
       </nav>

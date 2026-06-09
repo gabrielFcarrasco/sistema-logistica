@@ -12,7 +12,8 @@ import Button from '../components/ui/Button';
 
 import { 
   Settings, Package, AlertTriangle, Layers, Activity, 
-  ArrowRight, History, PieChart, Check, X, BellOff, ShoppingCart 
+  ArrowRight, History, PieChart, Check, X, BellOff, ShoppingCart,
+  Paintbrush // ✨ Adicionado ícone para os serviços
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -29,6 +30,10 @@ export default function Dashboard() {
   const [itensAlerta, setItensAlerta] = useState<any[]>([]);
   const [ultimasEntregas, setUltimasEntregas] = useState<any[]>([]);
   const [resumoCategorias, setResumoCategorias] = useState<{nome: string, qtd: number}[]>([]);
+
+  // ✨ NOVOS ESTADOS PARA PRESTAÇÃO DE SERVIÇOS (Pintura/Jateamento)
+  const [pintadosNaSemana, setPintadosNaSemana] = useState(0);
+  const [noGalpaoTotal, setNoGalpaoTotal] = useState(0);
 
   useEffect(() => {
     if (!setorAtivo && userLevel !== 'socio') return;
@@ -76,7 +81,29 @@ export default function Dashboard() {
       setUltimasEntregas(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
     });
 
-    return () => { unsubEstoque(); unsubEntregas(); };
+    // ✨ 3. ESCUTA DE SERVIÇOS (Pintura/Jateamento)
+    const qPintura = query(collection(db, 'servicos_pintura'), where('setorId', '==', setorAtivo));
+    const unsubPintura = onSnapshot(qPintura, (snapshot) => {
+      const todosServicos = snapshot.docs.map(d => d.data() as any);
+      
+      // Filtra o stock atual no galpão
+      const galpao = todosServicos.filter(s => s.status === 'no_galpao');
+      setNoGalpaoTotal(galpao.length);
+
+      // Calcula os pintados da semana atual
+      const hoje = new Date();
+      const primeiroDiaSemana = new Date(hoje.setDate(hoje.getDate() - hoje.getDay())); // Domingo da semana atual
+      primeiroDiaSemana.setHours(0,0,0,0);
+
+      const daSemana = todosServicos.filter(s => {
+        if (!s.dataPintura) return false;
+        const dataPeca = s.dataPintura.toDate();
+        return dataPeca >= primeiroDiaSemana;
+      });
+      setPintadosNaSemana(daSemana.length);
+    });
+
+    return () => { unsubEstoque(); unsubEntregas(); unsubPintura(); };
   }, [setorAtivo, userLevel]);
 
   const ajustarPadraoItem = async (itemId: string) => {
@@ -121,6 +148,26 @@ export default function Dashboard() {
         <StatCard titulo="Alertas" valor={itensAlerta.length} corDestaque={itensAlerta.length > 0 ? "#ef4444" : "#94a3b8"} icone={<AlertTriangle size={24} />} />
       </div>
 
+      {/* ✨ NOVA SECÇÃO DO DASHBOARD: PRESTAÇÃO DE SERVIÇOS (Pintura / Jateamento) */}
+      <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: 'var(--sombra-card)', marginBottom: '25px', borderTop: '4px solid #8b5cf6' }}>
+        <h3 style={{ margin: '0 0 15px 0', fontSize: '15px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+          <Paintbrush size={18} color="#8b5cf6" /> Produção de Serviços Industriais
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+          <div style={{ padding: '15px', backgroundColor: '#f5f3ff', borderRadius: '12px', border: '1px solid #ddd6fe', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#6d28d9', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Pintados na Semana</span>
+            <strong style={{ fontSize: '24px', color: '#4c1d95' }}>{pintadosNaSemana} <small style={{ fontSize: '12px', fontWeight: 'normal' }}>peças</small></strong>
+          </div>
+          <div style={{ padding: '15px', backgroundColor: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', textAlign: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#1d4ed8', fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>Prontas no Galpão</span>
+            <strong style={{ fontSize: '24px', color: '#1e3a8a' }}>{noGalpaoTotal} <small style={{ fontSize: '12px', fontWeight: 'normal' }}>peças</small></strong>
+          </div>
+        </div>
+        <Button onClick={() => navigate('/prestacao-servicos')} style={{ width: '100%', marginTop: '15px', backgroundColor: '#8b5cf6', height: '42px', fontSize: '13px', fontWeight: 'bold' }}>
+          Acessar Controlo de Pintura e Galpão <ArrowRight size={16} style={{ marginLeft: '6px' }} />
+        </Button>
+      </div>
+
       {/* ASSISTENTE DE ESTOQUE (PERGUNTA MANUAL) */}
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: 'var(--sombra-card)', marginBottom: '25px', borderLeft: '4px solid #f59e0b' }}>
         <h3 style={{ margin: '0 0 15px 0', fontSize: '15px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -149,7 +196,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* GRÁFICO VISUAL EM BARRAS (Sua Lógica Original Integrada) */}
+      {/* GRÁFICO VISUAL EM BARRAS */}
       <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', boxShadow: 'var(--sombra-card)', marginBottom: '25px' }}>
         <h3 style={{ margin: '0 0 20px 0', fontSize: '16px', color: '#1e293b' }}>Análise de Nível Crítico</h3>
         {itensAlerta.length === 0 ? (

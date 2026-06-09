@@ -4,12 +4,13 @@ import { collection, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, query,
 import { db } from '../services/firebase';
 
 import jsPDF from "jspdf";
-import logoCarvalho from '../assets/logo.webp';
+import logoCarvalho from '../assets/LogoLimpa.webp';
 
 import { 
   Users, UserPlus, CheckCircle2, AlertCircle, Shirt, FileText, 
   X, Camera, History, Package, Plus, Calendar, AlertTriangle, 
-  Lock, Edit3, GraduationCap, Award, PenTool, Smartphone, Send
+  Lock, Edit3, GraduationCap, Award, PenTool, Smartphone, Send,
+  UserMinus, UserCheck, Archive
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -18,6 +19,8 @@ interface Setor { id: string; nome: string; }
 interface Funcionario { 
   id: string; nome: string; matricula: string; cpf: string; rg: string; setorId: string; 
   tamanhoUniforme: string; tamanhoCalcado: string; qtdUniforme: string; fotoBase64?: string;
+  status?: 'ativo' | 'desligado';
+  dataDesligamento?: any;
 }
 
 export default function Funcionarios() {
@@ -26,6 +29,9 @@ export default function Funcionarios() {
   const [estoque, setEstoque] = useState<any[]>([]); 
   const [historicoEntregas, setHistoricoEntregas] = useState<any[]>([]); 
   
+  // Controle de Abas da Lista
+  const [filtroStatus, setFiltroStatus] = useState<'ativo' | 'desligado'>('ativo');
+
   const [nome, setNome] = useState('');
   const [matricula, setMatricula] = useState('');
   const [cpf, setCpf] = useState('');
@@ -57,14 +63,12 @@ export default function Funcionarios() {
   // 🎓 ESTADOS DO MÓDULO DE TREINAMENTOS
   const [treinamentosGlobais, setTreinamentosGlobais] = useState<any[]>([]);
   const [modalTreinamento, setModalTreinamento] = useState(false);
-  const [tStep, setTStep] = useState(0); // 0: Lista, 1: Form Cadastro, 2: Assina Instrutor, 3: Assina Funcs
-  
+  const [tStep, setTStep] = useState(0); 
   const [tTitulo, setTTitulo] = useState('');
   const [tData, setTData] = useState('');
   const [tInstrutor, setTInstrutor] = useState('');
   const [tCargaHoraria, setTCargaHoraria] = useState('1');
   const [tSelecionados, setTSelecionados] = useState<string[]>([]);
-  
   const [tAssinaturaInstrutor, setTAssinaturaInstrutor] = useState('');
   const [tAssinaturasFuncs, setTAssinaturasFuncs] = useState<Record<string, string>>({});
   const [tCurrentFuncIndex, setTCurrentFuncIndex] = useState(0);
@@ -111,7 +115,6 @@ export default function Funcionarios() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // --- LÓGICA DE FOTOS E CADASTRO ORIGINAL ---
   const processarFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -139,6 +142,7 @@ export default function Funcionarios() {
       await addDoc(collection(db, 'funcionarios'), {
         nome, matricula, cpf, rg, setorId, fotoBase64,
         tamanhoUniforme: tamanhoUniforme || 'Não informado', tamanhoCalcado: tamanhoCalcado || 'Não informado', 
+        status: 'ativo', // ✨ Status inicial
         createdAt: serverTimestamp()
       });
       avisar("Colaborador cadastrado!");
@@ -152,6 +156,28 @@ export default function Funcionarios() {
       await updateDoc(doc(db, 'funcionarios', fichaAberta.id), { tamanhoUniforme: fichaAberta.tamanhoUniforme, tamanhoCalcado: fichaAberta.tamanhoCalcado });
       avisar("Medidas atualizadas!");
     } catch (error) { avisar("Erro ao atualizar.", "erro"); }
+  };
+
+  // ✨ SISTEMA DE RESCISÃO E REATIVAÇÃO
+  const alternarStatusFuncionario = async (func: Funcionario) => {
+    const isDesligando = func.status !== 'desligado';
+    const msg = isDesligando 
+      ? `Atenção: Tem certeza que deseja DESLIGAR o colaborador ${func.nome}?\n\nEle será removido da lista principal, mas seu histórico será mantido.`
+      : `Deseja REATIVAR o colaborador ${func.nome} no sistema?`;
+
+    if (!confirm(msg)) return;
+
+    try {
+      await updateDoc(doc(db, 'funcionarios', func.id), {
+        status: isDesligando ? 'desligado' : 'ativo',
+        dataDesligamento: isDesligando ? serverTimestamp() : null
+      });
+      
+      setFichaAberta({ ...func, status: isDesligando ? 'desligado' : 'ativo' });
+      avisar(isDesligando ? "Colaborador Desligado com sucesso." : "Colaborador Reativado!");
+    } catch (error) {
+      avisar("Erro ao atualizar o status.", "erro");
+    }
   };
 
   const validarSenhaSocio = async () => {
@@ -251,18 +277,15 @@ export default function Funcionarios() {
     const jpegBase64 = canvas.toDataURL('image/jpeg', 0.6); // Super leve
 
     if (tStep === 2) {
-      // Instrutor Assinou
       setTAssinaturaInstrutor(jpegBase64);
-      setTStep(3); // Vai para os funcionários
+      setTStep(3);
     } else if (tStep === 3) {
-      // Funcionário Assinou
       const funcId = tSelecionados[tCurrentFuncIndex];
       setTAssinaturasFuncs(prev => ({ ...prev, [funcId]: jpegBase64 }));
       
       if (tCurrentFuncIndex + 1 < tSelecionados.length) {
-        setTCurrentFuncIndex(tCurrentFuncIndex + 1); // Próximo funcionário
+        setTCurrentFuncIndex(tCurrentFuncIndex + 1);
       } else {
-        // TODOS ASSINARAM! Salvar no banco.
         try {
           const participantesData = tSelecionados.map(id => {
             const f = funcionarios.find(x => x.id === id);
@@ -270,7 +293,7 @@ export default function Funcionarios() {
               funcionarioId: id,
               nome: f?.nome || 'Desconhecido',
               cpf: f?.cpf || 'Não Informado',
-              assinaturaFunc: tAssinaturasFuncs[id] || jpegBase64 // Pega a atual ou a do state
+              assinaturaFunc: tAssinaturasFuncs[id] || jpegBase64 
             };
           });
 
@@ -279,7 +302,7 @@ export default function Funcionarios() {
             assinaturaInstrutor: tAssinaturaInstrutor, participantes: participantesData, createdAt: serverTimestamp()
           });
           avisar("Treinamento registrado com sucesso!");
-          setTStep(0); // Volta pra lista
+          setTStep(0);
         } catch (e) { avisar("Erro ao salvar treinamento.", "erro"); }
       }
     }
@@ -292,7 +315,6 @@ export default function Funcionarios() {
       const azul = [30, 41, 59];
       const dourado = [218, 165, 32];
 
-      // Bordas do Certificado
       doc.setDrawColor(azul[0], azul[1], azul[2]);
       doc.setLineWidth(3); doc.rect(10, 10, 277, 190);
       doc.setDrawColor(dourado[0], dourado[1], dourado[2]);
@@ -320,7 +342,6 @@ export default function Funcionarios() {
       const textoCorpo = `${docFunc}, participou com êxito do treinamento\n"${treino.titulo.toUpperCase()}", realizado em ${dataFormatada},\ncom carga horária total de ${treino.cargaHoraria} hora(s).`;
       doc.text(textoCorpo, 148, 115, { align: 'center', lineHeightFactor: 1.5 });
 
-      // Assinaturas
       try { doc.addImage(treino.assinaturaInstrutor, 'JPEG', 50, 150, 50, 20); } catch(e){}
       doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.line(40, 172, 110, 172);
       doc.setFontSize(12); doc.text(treino.instrutor, 75, 178, { align: 'center' });
@@ -343,6 +364,9 @@ export default function Funcionarios() {
   };
 
   const nomesEstoque = Array.from(new Set(estoque.map(i => i.nome).filter(Boolean)));
+
+  // ✨ FILTRO DE EXIBIÇÃO DA LISTA DE FUNCIONÁRIOS
+  const funcionariosExibidos = funcionarios.filter(f => filtroStatus === 'ativo' ? f.status !== 'desligado' : f.status === 'desligado');
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '40px', padding: '10px' }}>
@@ -405,45 +429,67 @@ export default function Funcionarios() {
 
         {/* LISTA DE FUNCIONÁRIOS */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: 'var(--sombra-card)' }}>
-          <h3 style={{ marginBottom: '15px', fontSize: '16px' }}>Equipe Operacional</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h3 style={{ fontSize: '16px', margin: 0 }}>Equipe Operacional</h3>
+          </div>
+
+          {/* ✨ Abas Ativos / Desligados */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+            <button onClick={() => setFiltroStatus('ativo')} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', backgroundColor: filtroStatus === 'ativo' ? '#3b82f6' : '#f1f5f9', color: filtroStatus === 'ativo' ? 'white' : '#64748b' }}>
+              Ativos
+            </button>
+            <button onClick={() => setFiltroStatus('desligado')} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', backgroundColor: filtroStatus === 'desligado' ? '#ef4444' : '#f1f5f9', color: filtroStatus === 'desligado' ? 'white' : '#64748b' }}>
+              Desligados
+            </button>
+          </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {funcionarios.map(func => (
-              <div key={func.id} style={{ border: '1px solid #e2e8f0', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#f1f5f9', overflow: 'hidden' }}>
-                    {func.fotoBase64 ? <img src={func.fotoBase64} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <UserPlus size={20} color="#94a3b8" style={{ margin: '10px' }} />}
+            {funcionariosExibidos.length === 0 ? (
+              <p style={{ textAlign: 'center', color: '#94a3b8', padding: '20px 0', fontSize: '14px' }}>Nenhum colaborador nesta lista.</p>
+            ) : (
+              funcionariosExibidos.map(func => (
+                <div key={func.id} style={{ border: '1px solid #e2e8f0', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: func.status === 'desligado' ? '#fef2f2' : 'white', opacity: func.status === 'desligado' ? 0.8 : 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#f1f5f9', overflow: 'hidden' }}>
+                      {func.fotoBase64 ? <img src={func.fotoBase64} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: func.status === 'desligado' ? 'grayscale(100%)' : 'none' }} /> : <UserPlus size={20} color="#94a3b8" style={{ margin: '10px' }} />}
+                    </div>
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '15px', color: func.status === 'desligado' ? '#991b1b' : '#1e293b' }}>{func.nome}</strong>
+                      <span style={{ fontSize: '11px', backgroundColor: func.status === 'desligado' ? '#fecaca' : '#f1f5f9', padding: '4px 6px', borderRadius: '4px', color: func.status === 'desligado' ? '#dc2626' : '#64748b', fontWeight: 'bold' }}>
+                        MAT: {func.matricula}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <strong style={{ display: 'block', fontSize: '15px', color: '#1e293b' }}>{func.nome}</strong>
-                    <span style={{ fontSize: '11px', backgroundColor: '#f1f5f9', padding: '4px 6px', borderRadius: '4px', color: '#64748b', fontWeight: 'bold' }}>MAT: {func.matricula}</span>
-                  </div>
+                  <Button onClick={() => setFichaAberta(func)} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
+                    <FileText size={16} style={{marginRight: '5px'}} /> Ficha
+                  </Button>
                 </div>
-                <Button onClick={() => setFichaAberta(func)} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
-                  <FileText size={16} style={{marginRight: '5px'}} /> Ficha
-                </Button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
       </div>
 
-      {/* 🌟 MODAL DA FICHA DO FUNCIONÁRIO (COM HISTÓRICO DE TREINAMENTOS) */}
+      {/* 🌟 MODAL DA FICHA DO FUNCIONÁRIO */}
       {fichaAberta && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.9)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px', backdropFilter: 'blur(4px)' }}>
           <div style={{ backgroundColor: '#f8fafc', width: '100%', maxWidth: '1000px', borderRadius: '20px', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '90vh', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
             
-            <div style={{ backgroundColor: '#1e293b', padding: '20px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ backgroundColor: fichaAberta.status === 'desligado' ? '#7f1d1d' : '#1e293b', padding: '20px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                  <div style={{ width: '55px', height: '55px', borderRadius: '50%', backgroundColor: 'white', overflow: 'hidden', border: '2px solid #475569' }}>
-                    {fichaAberta.fotoBase64 ? <img src={fichaAberta.fotoBase64} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <UserPlus size={25} color="#94a3b8" style={{ margin: '12px' }} />}
+                    {fichaAberta.fotoBase64 ? <img src={fichaAberta.fotoBase64} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: fichaAberta.status === 'desligado' ? 'grayscale(100%)' : 'none' }} /> : <UserPlus size={25} color="#94a3b8" style={{ margin: '12px' }} />}
                  </div>
                  <div>
-                  <h2 style={{ fontSize: '18px', margin: '0 0 5px 0', fontWeight: 'bold' }}>{fichaAberta.nome}</h2>
+                  <h2 style={{ fontSize: '18px', margin: '0 0 5px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {fichaAberta.nome} 
+                    {fichaAberta.status === 'desligado' && <span style={{ backgroundColor: '#ef4444', fontSize: '11px', padding: '2px 8px', borderRadius: '4px' }}>DESLIGADO</span>}
+                  </h2>
                   <span style={{ fontSize: '13px', color: '#cbd5e1', backgroundColor: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '50px' }}>Matrícula: {fichaAberta.matricula}</span>
                  </div>
               </div>
-              <button onClick={() => setFichaAberta(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={28} /></button>
+              <button onClick={() => setFichaAberta(null)} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer' }}><X size={28} /></button>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', overflowY: 'auto', flex: 1 }}>
@@ -495,6 +541,25 @@ export default function Funcionarios() {
                   </div>
                   <Button onClick={salvarEdicaoFicha} style={{ height: '45px', backgroundColor: '#3b82f6', marginTop: '5px' }}>Salvar Medidas</Button>
                 </div>
+
+                {/* ✨ GESTÃO DE RESCISÃO */}
+                <div style={{ marginTop: '25px', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
+                  <h4 style={{ fontSize: '13px', color: '#1e293b', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <UserMinus size={16} color="#ef4444" /> ADMISSÃO E RESCISÃO
+                  </h4>
+                  <Button 
+                    onClick={() => alternarStatusFuncionario(fichaAberta)} 
+                    style={{ 
+                      width: '100%', height: '45px', 
+                      backgroundColor: fichaAberta.status === 'desligado' ? '#10b981' : '#fee2e2', 
+                      color: fichaAberta.status === 'desligado' ? 'white' : '#ef4444', 
+                      border: fichaAberta.status === 'desligado' ? 'none' : '1px solid #f87171' 
+                    }}
+                  >
+                    {fichaAberta.status === 'desligado' ? <><UserCheck size={16} style={{marginRight: '6px'}}/> Reativar Colaborador</> : <><Archive size={16} style={{marginRight: '6px'}}/> Desligar Colaborador</>}
+                  </Button>
+                </div>
+
               </div>
 
               {/* DIREITA: HISTÓRICOS (EPI e TREINO) */}
@@ -677,7 +742,9 @@ export default function Funcionarios() {
 
                 <h4 style={{ fontSize: '14px', color: '#475569', marginBottom: '10px' }}>Selecione os Participantes ({tSelecionados.length})</h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', maxHeight: '300px', overflowY: 'auto', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
-                  {funcionarios.map(f => (
+                  
+                  {/* ✨ Filtra apenas funcionários ATIVOS na hora de montar um novo treinamento */}
+                  {funcionarios.filter(f => f.status !== 'desligado').map(f => (
                     <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: tSelecionados.includes(f.id) ? '#f3e8ff' : '#f8fafc', border: `1px solid ${tSelecionados.includes(f.id) ? '#c084fc' : '#e2e8f0'}`, borderRadius: '8px', cursor: 'pointer' }}>
                       <input type="checkbox" checked={tSelecionados.includes(f.id)} onChange={() => toggleFuncTreino(f.id)} style={{ width: '18px', height: '18px' }} />
                       <span style={{ fontSize: '14px', fontWeight: tSelecionados.includes(f.id) ? 'bold' : 'normal' }}>{f.nome}</span>

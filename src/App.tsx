@@ -11,6 +11,7 @@ import PedidosCompra from './pages/PedidosCompra';
 import Advertencias from './pages/Advertencias';
 import GestaoAcessos from './pages/GestaoAcessos';
 import SetupSenha from './pages/SetupSenha';
+import PrestacaoServicos from './pages/PrestacaoServicos';
 
 // Importando o Componente de Layout
 import Layout from './components/Layout';
@@ -36,6 +37,7 @@ function App() {
           <Route path="/pedidos-compra" element={<PedidosCompra />} />
           <Route path="/advertencias" element={<Advertencias />} />
           <Route path="/acessos" element={<GestaoAcessos />} />
+          <Route path="/prestacao-servicos" element={<PrestacaoServicos />} />
         </Route>
       </Routes>
     </BrowserRouter>
