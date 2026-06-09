@@ -10,7 +10,8 @@ import logoCarvalho from '../assets/LogoLimpa.webp';
 import { 
   Paintbrush, CheckCircle2, AlertCircle, 
   TrainFront, ClipboardSignature, PenTool, FileDown,
-  X, Briefcase, FileText, Plus, Trash2, Clock, Check, Smartphone
+  X, Briefcase, FileText, Plus, Trash2, Clock, Check, Smartphone,
+  Edit // ✨ Ícone de Edição adicionado
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -50,6 +51,9 @@ export default function PrestacaoServicos() {
   const [itensOS, setItensOS] = useState<ItemOS[]>([{ quantidade: 1, descricao: '', serial: '' }]);
   const [descricaoServicoOS, setDescricaoServicoOS] = useState('');
   
+  // ✨ Novo Estado: OS em Edição
+  const [osEditando, setOsEditando] = useState<any>(null);
+
   // 4. Estados - Edição e Assinatura
   const [osAberta, setOsAberta] = useState<any>(null);
   const [modalAssinatura, setModalAssinatura] = useState<'fechado' | 'prestador' | 'cliente'>('fechado');
@@ -134,25 +138,52 @@ export default function PrestacaoServicos() {
     setItensOS(novos);
   };
 
+  // ✨ Carrega os dados da OS no formulário para Edição
+  const iniciarEdicaoOS = (os: any) => {
+    setOsEditando(os);
+    setTipoEscopo(os.tipoEscopo || 'Peças Avulsas / Componentes');
+    setItensOS(os.itens || [{ quantidade: 1, descricao: '', serial: '' }]);
+    setDescricaoServicoOS(os.descricaoServico || '');
+    setOsAberta(null); // Fecha o modal de visualização
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Sobe a tela para o form
+  };
+
+  const cancelarEdicaoOS = () => {
+    setOsEditando(null);
+    setTipoEscopo('Peças Avulsas / Componentes');
+    setItensOS([{ quantidade: 1, descricao: '', serial: '' }]);
+    setDescricaoServicoOS('');
+  };
+
   const registrarESalvarOS = async (e: React.FormEvent) => {
     e.preventDefault();
     if (itensOS.length === 0 || itensOS.some(i => !i.descricao)) return avisar("Preencha a descrição das peças no carrinho.", "erro");
 
     try {
-      await addDoc(collection(db, 'ordens_servico'), {
-        setorId: setorAtivo,
-        tipoEscopo,
-        itens: itensOS,
-        descricaoServico: descricaoServicoOS,
-        assinaturaPrestador: '',
-        assinaturaCliente: '',
-        status: 'Aguardando Assinaturas',
-        dataEmissao: serverTimestamp()
-      });
-      avisar("OS salva no banco! Aguardando coleta de assinaturas.");
-      setTipoEscopo('Peças Avulsas / Componentes');
-      setItensOS([{ quantidade: 1, descricao: '', serial: '' }]);
-      setDescricaoServicoOS('');
+      if (osEditando) {
+        // ✨ ATUALIZA UMA OS EXISTENTE
+        await updateDoc(doc(db, 'ordens_servico', osEditando.id), {
+          tipoEscopo,
+          itens: itensOS,
+          descricaoServico: descricaoServicoOS
+        });
+        avisar("Ordem de Serviço atualizada com sucesso!");
+        cancelarEdicaoOS();
+      } else {
+        // ✨ CRIA UMA NOVA OS
+        await addDoc(collection(db, 'ordens_servico'), {
+          setorId: setorAtivo,
+          tipoEscopo,
+          itens: itensOS,
+          descricaoServico: descricaoServicoOS,
+          assinaturaPrestador: '',
+          assinaturaCliente: '',
+          status: 'Aguardando Assinaturas',
+          dataEmissao: serverTimestamp()
+        });
+        avisar("OS salva no banco! Aguardando coleta de assinaturas.");
+        cancelarEdicaoOS(); // Limpa o form
+      }
     } catch (e) { avisar("Erro ao salvar a OS.", "erro"); }
   };
 
@@ -316,7 +347,7 @@ export default function PrestacaoServicos() {
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' }}>
         <Button onClick={() => setAbaAtiva('truques')} style={{ flex: 1, backgroundColor: abaAtiva === 'truques' ? '#3b82f6' : '#e2e8f0', color: abaAtiva === 'truques' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
-          <TrainFront size={18}/>Truques (Jat/Pintura)
+          <TrainFront size={18}/> Linha de Truques (Jat/Pintura)
         </Button>
         <Button onClick={() => setAbaAtiva('os')} style={{ flex: 1, backgroundColor: abaAtiva === 'os' ? '#8b5cf6' : '#e2e8f0', color: abaAtiva === 'os' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
           <ClipboardSignature size={18}/> OS Hyundai Rotem
@@ -378,10 +409,11 @@ export default function PrestacaoServicos() {
       {abaAtiva === 'os' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
           
-          {/* CRIAÇÃO DA OS */}
-          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', borderTop: '4px solid #8b5cf6', height: 'fit-content' }}>
+          {/* CRIAÇÃO DA OS / EDIÇÃO */}
+          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', borderTop: osEditando ? '4px solid #3b82f6' : '4px solid #8b5cf6', height: 'fit-content', transition: 'all 0.3s' }}>
             <h3 style={{ fontSize: '16px', margin: '0 0 20px 0', color: '#1e293b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FileText size={18} color="#8b5cf6" /> Elaborar Nova Ordem de Serviço
+              <FileText size={18} color={osEditando ? "#3b82f6" : "#8b5cf6"} /> 
+              {osEditando ? `Editando OS Nº ${osEditando.id.slice(-6).toUpperCase()}` : 'Elaborar Nova Ordem de Serviço'}
             </h3>
 
             {/* Cabeçalho Fixo (Mobile-friendly) */}
@@ -398,7 +430,7 @@ export default function PrestacaoServicos() {
 
             <form onSubmit={registrarESalvarOS} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               
-              {/* ESCOPO GERAL (Sem duplicação de input de identificação) */}
+              {/* ESCOPO GERAL */}
               <div>
                 <label style={{ fontSize: '13px', color: '#475569', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Tipo de Serviço / Escopo *</label>
                 <select value={tipoEscopo} onChange={e => setTipoEscopo(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}>
@@ -444,9 +476,17 @@ export default function PrestacaoServicos() {
                 <textarea rows={3} value={descricaoServicoOS} onChange={e => setDescricaoServicoOS(e.target.value)} placeholder="Detalhes técnicos, tintas usadas, etc..." style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', resize: 'vertical' }} />
               </div>
 
-              <Button type="submit" style={{ height: '55px', backgroundColor: '#8b5cf6', fontSize: '14px', fontWeight: 'bold', marginTop: '10px' }}>
-                Salvar OS (Assinar Depois)
-              </Button>
+              {/* Botões Dinâmicos (Criar vs Editar) */}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                {osEditando && (
+                  <Button type="button" onClick={cancelarEdicaoOS} style={{ flex: 1, height: '55px', backgroundColor: '#e2e8f0', color: '#475569', fontSize: '14px', fontWeight: 'bold' }}>
+                    Cancelar Edição
+                  </Button>
+                )}
+                <Button type="submit" style={{ flex: 2, height: '55px', backgroundColor: osEditando ? '#3b82f6' : '#8b5cf6', fontSize: '14px', fontWeight: 'bold' }}>
+                  {osEditando ? 'Salvar Alterações na OS' : 'Salvar OS (Assinar Depois)'}
+                </Button>
+              </div>
             </form>
           </div>
 
@@ -479,17 +519,28 @@ export default function PrestacaoServicos() {
           ======================================================== */}
       {osAberta && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.9)', zIndex: 15000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '15px' }}>
-          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '600px', borderRadius: '20px', padding: '25px', maxHeight: '95vh', overflowY: 'auto' }}>
+          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '600px', borderRadius: '24px', padding: '25px', maxHeight: '95vh', overflowY: 'auto' }}>
+            
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, fontSize: '20px' }}>OS Nº {osAberta.id.slice(-6).toUpperCase()}</h2>
-              <button onClick={() => setOsAberta(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24}/></button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {/* ✨ Botão de Edição (Só aparece se a OS ainda não foi concluída/assinada por ambos) */}
+                {osAberta.status !== 'Concluída' && (
+                  <button onClick={() => iniciarEdicaoOS(osAberta)} style={{ background: '#e0e7ff', color: '#4f46e5', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }} title="Editar OS">
+                    <Edit size={20}/>
+                  </button>
+                )}
+                <button onClick={() => setOsAberta(null)} style={{ background: '#f1f5f9', color: '#64748b', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>
+                  <X size={20}/>
+                </button>
+              </div>
             </div>
 
             <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
               <h4 style={{ fontSize: '13px', margin: '0 0 10px 0', color: '#475569' }}>Escopo: {osAberta.tipoEscopo}</h4>
               <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', color: '#1e293b' }}>
                 {osAberta.itens?.map((i:any, idx:number) => (
-                  <li key={idx}><strong>{i.quantidade}x</strong> {i.descricao} {i.serial ? `(SN: ${i.serial})` : ''}</li>
+                  <li key={idx} style={{ marginBottom: '6px' }}><strong>{i.quantidade}x</strong> {i.descricao} {i.serial ? <span style={{color: '#64748b'}}>(SN: {i.serial})</span> : ''}</li>
                 ))}
               </ul>
             </div>
@@ -541,8 +592,8 @@ export default function PrestacaoServicos() {
                </div>
 
                <div style={{ padding: '15px', backgroundColor: 'white', display: 'flex', gap: '10px' }}>
-                 <Button onClick={limparCanvas} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569' }}>Limpar</Button>
-                 <Button onClick={salvarAssinaturaNaOS} style={{ flex: 2, backgroundColor: '#10b981' }}>Salvar Assinatura</Button>
+                 <Button onClick={limparCanvas} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569' }}>Limpar Fundo</Button>
+                 <Button onClick={salvarAssinaturaNaOS} style={{ flex: 2, backgroundColor: '#10b981' }}>Salvar Assinatura e Voltar</Button>
                </div>
              </>
            )}
