@@ -5,7 +5,7 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, upd
 import { db } from '../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../assets/logo.webp';
+import logoCarvalho from '../assets/LogoLimpa.webp';
 
 import { 
   Paintbrush, CheckCircle2, AlertCircle, 
@@ -44,10 +44,9 @@ export default function PrestacaoServicos() {
   const [truqueId, setTruqueId] = useState('');
   const [colaboradorJateouId, setColaboradorJateouId] = useState('');
 
-  // 3. Estados - Aba OS (Escopo + Itens)
+  // 3. Estados - Aba OS (Sem duplicação de Serial)
   const [historicoOS, setHistoricoOS] = useState<any[]>([]);
-  const [tipoEscopo, setTipoEscopo] = useState('Trem Inteiro');
-  const [identificacaoEscopo, setIdentificacaoEscopo] = useState('');
+  const [tipoEscopo, setTipoEscopo] = useState('Peças Avulsas / Componentes');
   const [itensOS, setItensOS] = useState<ItemOS[]>([{ quantidade: 1, descricao: '', serial: '' }]);
   const [descricaoServicoOS, setDescricaoServicoOS] = useState('');
   
@@ -63,14 +62,12 @@ export default function PrestacaoServicos() {
     setTimeout(() => setNotificacao(null), 4000);
   };
 
-  // Monitora se a tela está em pé ou deitada
   useEffect(() => {
     const handleResize = () => setIsPortrait(window.innerHeight > window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Sincroniza a OS aberta
   useEffect(() => {
     if (osAberta) {
       const osAtualizada = historicoOS.find(os => os.id === osAberta.id);
@@ -139,14 +136,12 @@ export default function PrestacaoServicos() {
 
   const registrarESalvarOS = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (tipoEscopo !== 'Sem Identificação / Registro' && !identificacaoEscopo) return avisar("Preencha a identificação do escopo (Carro/Trem).", "erro");
-    if (itensOS.length === 0 || itensOS.some(i => !i.descricao)) return avisar("Preencha a descrição das peças.", "erro");
+    if (itensOS.length === 0 || itensOS.some(i => !i.descricao)) return avisar("Preencha a descrição das peças no carrinho.", "erro");
 
     try {
       await addDoc(collection(db, 'ordens_servico'), {
         setorId: setorAtivo,
         tipoEscopo,
-        identificacaoEscopo: tipoEscopo === 'Sem Identificação / Registro' ? 'N/A' : identificacaoEscopo,
         itens: itensOS,
         descricaoServico: descricaoServicoOS,
         assinaturaPrestador: '',
@@ -155,7 +150,7 @@ export default function PrestacaoServicos() {
         dataEmissao: serverTimestamp()
       });
       avisar("OS salva no banco! Aguardando coleta de assinaturas.");
-      setTipoEscopo('Trem Inteiro'); setIdentificacaoEscopo('');
+      setTipoEscopo('Peças Avulsas / Componentes');
       setItensOS([{ quantidade: 1, descricao: '', serial: '' }]);
       setDescricaoServicoOS('');
     } catch (e) { avisar("Erro ao salvar a OS.", "erro"); }
@@ -207,7 +202,6 @@ export default function PrestacaoServicos() {
     const canvas = canvasRef.current;
     if (!canvas || !osAberta) return;
     
-    // Leve e Otimizado!
     const base64 = canvas.toDataURL('image/jpeg', 0.6);
     
     try {
@@ -234,7 +228,6 @@ export default function PrestacaoServicos() {
     const dataDoc = dados.dataEmissao?.toDate ? dados.dataEmissao.toDate().toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
     const numeroOS = dados.id ? dados.id.slice(-6).toUpperCase() : "NOVA";
 
-    // 1. Cabeçalho Principal
     try { docPdf.addImage(logoCarvalho, 'WEBP', 15, 10, 40, 14); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(16); docPdf.setTextColor(...azulEscuro);
     docPdf.text("ORDEM DE SERVIÇO", 105, 18, { align: 'center' });
@@ -243,7 +236,6 @@ export default function PrestacaoServicos() {
     docPdf.text(`OS Nº: ${numeroOS} | Data: ${dataDoc}`, 195, 20, { align: 'right' });
     docPdf.setLineWidth(0.5); docPdf.line(15, 26, 195, 26);
 
-    // 2. Quadros de Identificação (Carvalho x Rotem)
     docPdf.setFillColor(241, 245, 249); docPdf.rect(15, 30, 80, 25, "F");
     docPdf.setFontSize(9); docPdf.setTextColor(0, 0, 0);
     docPdf.setFont("helvetica", "bold"); docPdf.text("PRESTADOR", 18, 35);
@@ -255,26 +247,14 @@ export default function PrestacaoServicos() {
     const infoCliente = docPdf.splitTextToSize("Hyundai Rotem Brasil Industria e Comercio de Trens Ltda.\nCNPJ: 17.866.875/0004-16", 74);
     docPdf.text(infoCliente, 118, 41);
 
-    // 3. Escopo Geral
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(11);
-    docPdf.text("ESCOPO GERAL DA O.S.", 15, 65);
-    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(10);
-    docPdf.text(`Tipo de Objeto: ${dados.tipoEscopo}`, 15, 72);
-    let currentY = 72;
-    if (dados.tipoEscopo !== 'Sem Identificação / Registro') {
-      docPdf.text(`Identificação / Serial: ${dados.identificacaoEscopo}`, 15, 78);
-      currentY = 78;
-    }
-
-    // 4. TABELA DINÂMICA DE PEÇAS
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(11);
-    docPdf.text("LISTA DE PEÇAS DETALHADA", 15, currentY + 10);
+    docPdf.text(`ESCOPO DA O.S.: ${dados.tipoEscopo.toUpperCase()}`, 15, 65);
     
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
     renderTable(docPdf, {
-      startY: currentY + 13,
-      head: [["QTD", "DESCRIÇÃO DA PEÇA / SERVIÇO", "SERIAL / CÓDIGO WEG"]],
-      body: dados.itens.map((i: any) => [`${i.quantidade} un`, i.descricao, i.serial || 'S/N']),
+      startY: 70,
+      head: [["QTD", "DESCRIÇÃO DA PEÇA / SERVIÇO", "SERIAL / CÓDIGO"]],
+      body: dados.itens.map((i: any) => [`${i.quantidade} un`, i.descricao, i.serial || 'S/ Registro']),
       theme: 'grid',
       headStyles: { fillColor: [241, 245, 249], textColor: [0, 0, 0], halign: 'center' },
       columnStyles: { 0: { halign: 'center', cellWidth: 20 }, 2: { halign: 'center', cellWidth: 50 } },
@@ -283,14 +263,12 @@ export default function PrestacaoServicos() {
 
     const finalY = (docPdf as any).lastAutoTable.finalY + 10;
 
-    // 5. Descrição Adicional
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(11);
-    docPdf.text("OBSERVAÇÕES E ATIVIDADES", 15, finalY);
+    docPdf.text("OBSERVAÇÕES E ATIVIDADES ADICIONAIS", 15, finalY);
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(10);
-    const splitDesc = docPdf.splitTextToSize(dados.descricaoServico || 'Conforme peças detalhadas acima.', 180);
+    const splitDesc = docPdf.splitTextToSize(dados.descricaoServico || 'Executado conforme as peças e quantidades detalhadas acima.', 180);
     docPdf.text(splitDesc, 15, finalY + 7);
 
-    // 6. ASSINATURAS (Fixas no fim da página se houver espaço)
     const yAssinatura = Math.max(finalY + 30, 240);
     docPdf.setDrawColor(0,0,0); docPdf.setLineWidth(0.5);
 
@@ -316,7 +294,6 @@ export default function PrestacaoServicos() {
     docPdf.save(`OS_Carvalho_${osAberta.id.slice(-6).toUpperCase()}.pdf`);
   };
 
-  // Separação dos Truques
   const truquesAguardando = truques.filter(t => t.status === 'jateado');
   const truquesConcluidos = truques.filter(t => t.status === 'pintado');
 
@@ -339,7 +316,7 @@ export default function PrestacaoServicos() {
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' }}>
         <Button onClick={() => setAbaAtiva('truques')} style={{ flex: 1, backgroundColor: abaAtiva === 'truques' ? '#3b82f6' : '#e2e8f0', color: abaAtiva === 'truques' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
-          <TrainFront size={18}/> Linha de Truques (Jat/Pintura)
+          <TrainFront size={18}/>Truques (Jat/Pintura)
         </Button>
         <Button onClick={() => setAbaAtiva('os')} style={{ flex: 1, backgroundColor: abaAtiva === 'os' ? '#8b5cf6' : '#e2e8f0', color: abaAtiva === 'os' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
           <ClipboardSignature size={18}/> OS Hyundai Rotem
@@ -350,8 +327,8 @@ export default function PrestacaoServicos() {
           ABA 1: CONTROLE DE TRUQUES
           ======================================================== */}
       {abaAtiva === 'truques' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', height: 'fit-content' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', height: 'fit-content' }}>
             <h3 style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 20px 0', color: '#1e293b', fontWeight: 'bold' }}>
               <TrainFront size={18} color="#3b82f6" /> Lançar Truque na Linha
             </h3>
@@ -374,7 +351,7 @@ export default function PrestacaoServicos() {
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
                 {truquesAguardando.map(t => (
-                  <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #fde047', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #fde047', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                     <div><strong style={{ display: 'block', color: '#713f12', fontSize: '14px' }}>{t.identificacao}</strong><span style={{ fontSize: '11px', color: '#a16207' }}>Jateado por: {t.colaboradorJateouNome}</span></div>
                     <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px 12px', fontSize: '11px' }}>Concluir Pintura</Button>
                   </div>
@@ -396,68 +373,67 @@ export default function PrestacaoServicos() {
       )}
 
       {/* ========================================================
-          ABA 2: ORDEM DE SERVIÇO (ESCOPO + CARRINHO DE PEÇAS)
+          ABA 2: ORDEM DE SERVIÇO (OTIMIZADO PARA MOBILE)
           ======================================================== */}
       {abaAtiva === 'os' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
           
           {/* CRIAÇÃO DA OS */}
-          <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', borderTop: '4px solid #8b5cf6', height: 'fit-content' }}>
+          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', borderTop: '4px solid #8b5cf6', height: 'fit-content' }}>
             <h3 style={{ fontSize: '16px', margin: '0 0 20px 0', color: '#1e293b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <FileText size={18} color="#8b5cf6" /> Elaborar Nova Ordem de Serviço
             </h3>
 
-            {/* Cabeçalho Fixo (Carvalho x Hyundai) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+            {/* Cabeçalho Fixo (Mobile-friendly) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: '#f1f5f9', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold' }}>PRESTADOR</span>
                 <strong style={{ display: 'block', fontSize: '12px', color: '#0f172a' }}>CARVALHO FUNILARIA LTDA</strong>
-                <span style={{ fontSize: '11px', color: '#475569' }}>CNPJ: 31.362.302/0001-33</span>
               </div>
               <div style={{ backgroundColor: '#f1f5f9', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold' }}>CLIENTE</span>
-                <strong style={{ display: 'block', fontSize: '11px', color: '#0f172a', lineHeight: '1.2' }}>Hyundai Rotem Brasil Industria e Comercio de Trens Ltda.</strong>
-                <span style={{ fontSize: '11px', color: '#475569', display: 'block', marginTop: '2px' }}>CNPJ: 17.866.875/0004-16</span>
+                <strong style={{ display: 'block', fontSize: '11px', color: '#0f172a', lineHeight: '1.2' }}>Hyundai Rotem Brasil Ltda.</strong>
               </div>
             </div>
 
             <form onSubmit={registrarESalvarOS} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               
-              {/* ESCOPO GERAL */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div>
-                  <label style={{ fontSize: '13px', color: '#475569', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Escopo Geral da O.S. *</label>
-                  <select value={tipoEscopo} onChange={e => setTipoEscopo(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}>
-                    <option value="Trem Inteiro">Trem Inteiro</option>
-                    <option value="Carro Específico">Carro Específico</option>
-                    <option value="Serial de Peça">Serial de Peça</option>
-                    <option value="Código WEG">Código WEG</option>
-                    <option value="Sem Identificação / Registro">Sem Identificação / Registro</option>
-                  </select>
-                </div>
-                {tipoEscopo !== 'Sem Identificação / Registro' && (
-                  <Input label={`Identificação (${tipoEscopo}) *`} value={identificacaoEscopo} onChange={e => setIdentificacaoEscopo(e.target.value)} placeholder="Digite o serial, número do carro, etc..." />
-                )}
+              {/* ESCOPO GERAL (Sem duplicação de input de identificação) */}
+              <div>
+                <label style={{ fontSize: '13px', color: '#475569', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Tipo de Serviço / Escopo *</label>
+                <select value={tipoEscopo} onChange={e => setTipoEscopo(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}>
+                  <option value="Trem Inteiro">Trem Inteiro</option>
+                  <option value="Carro Específico">Carro Específico</option>
+                  <option value="Peças Avulsas / Componentes">Peças Avulsas / Componentes</option>
+                </select>
               </div>
 
-              {/* LISTA DE PEÇAS / CARRINHO */}
+              {/* LISTA DE PEÇAS / CARRINHO RESPONSIVO */}
               <div style={{ borderTop: '2px dashed #e2e8f0', paddingTop: '15px', marginTop: '5px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <label style={{ fontSize: '13px', color: '#475569', fontWeight: 'bold' }}>Lista de Peças Detalhada</label>
+                  <label style={{ fontSize: '13px', color: '#475569', fontWeight: 'bold' }}>Lista de Peças</label>
                   <button onClick={adicionarItemOS} type="button" style={{ display: 'flex', alignItems: 'center', gap: '5px', backgroundColor: '#e0e7ff', color: '#4f46e5', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    <Plus size={14}/> Adicionar Linha
+                    <Plus size={14}/> Add Linha
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                   {itensOS.map((item, index) => (
-                    <div key={index} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr 30px', gap: '10px', alignItems: 'center', paddingBottom: '10px', borderBottom: index < itensOS.length - 1 ? '1px dashed #cbd5e1' : 'none' }}>
-                      <Input label={index === 0 ? "Qtd" : ""} type="number" value={item.quantidade} onChange={e => atualizarItemOS(index, 'quantidade', Number(e.target.value))} required />
-                      <Input label={index === 0 ? "Peça / Serviço" : ""} placeholder="Ex: Motor" value={item.descricao} onChange={e => atualizarItemOS(index, 'descricao', e.target.value)} required />
-                      <Input label={index === 0 ? "Serial" : ""} placeholder="Ex: SN-123" value={item.serial} onChange={e => atualizarItemOS(index, 'serial', e.target.value)} />
-                      <button type="button" onClick={() => removerItemOS(index)} disabled={itensOS.length === 1} style={{ background: 'none', border: 'none', color: itensOS.length === 1 ? '#cbd5e1' : '#ef4444', cursor: itensOS.length === 1 ? 'not-allowed' : 'pointer', marginTop: index === 0 ? '20px' : '0' }}>
-                        <Trash2 size={18}/>
-                      </button>
+                    <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '15px', borderBottom: index < itensOS.length - 1 ? '1px dashed #cbd5e1' : 'none' }}>
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <div style={{ width: '70px' }}>
+                           <Input label={index === 0 ? "Qtd" : ""} type="number" value={item.quantidade} onChange={e => atualizarItemOS(index, 'quantidade', Number(e.target.value))} required />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                           <Input label={index === 0 ? "Peça / Serviço" : ""} placeholder="Ex: Motor" value={item.descricao} onChange={e => atualizarItemOS(index, 'descricao', e.target.value)} required />
+                        </div>
+                        <button type="button" onClick={() => removerItemOS(index)} disabled={itensOS.length === 1} style={{ background: 'none', border: 'none', color: itensOS.length === 1 ? '#cbd5e1' : '#ef4444', cursor: itensOS.length === 1 ? 'not-allowed' : 'pointer', marginTop: index === 0 ? '20px' : '0' }}>
+                          <Trash2 size={20}/>
+                        </button>
+                      </div>
+                      <div style={{ width: '100%' }}>
+                         <Input label="" placeholder="Serial / Código WEG (Opcional)" value={item.serial} onChange={e => atualizarItemOS(index, 'serial', e.target.value)} />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -469,20 +445,20 @@ export default function PrestacaoServicos() {
               </div>
 
               <Button type="submit" style={{ height: '55px', backgroundColor: '#8b5cf6', fontSize: '14px', fontWeight: 'bold', marginTop: '10px' }}>
-                Salvar OS no Banco de Dados (Assinar Depois)
+                Salvar OS (Assinar Depois)
               </Button>
             </form>
           </div>
 
           {/* HISTÓRICO DE OS (Gestão de Assinaturas e PDFs) */}
-          <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', height: 'fit-content' }}>
+          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', height: 'fit-content' }}>
              <h3 style={{ fontSize: '16px', margin: '0 0 15px 0', color: '#1e293b', fontWeight: 'bold' }}>Emissões e Assinaturas Pendentes</h3>
              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '600px', overflowY: 'auto' }}>
                 {historicoOS.length === 0 ? (
                   <p style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center', padding: '20px' }}>Nenhuma OS gerada nesta unidade.</p>
                 ) : (
                   historicoOS.map(os => (
-                    <div key={os.id} onClick={() => setOsAberta(os)} style={{ backgroundColor: os.status === 'Concluída' ? '#f0fdf4' : '#fffbeb', padding: '15px', borderRadius: '12px', border: `1px solid ${os.status === 'Concluída' ? '#bbf7d0' : '#fde68a'}`, cursor: 'pointer', transition: 'transform 0.2s' }}>
+                    <div key={os.id} onClick={() => setOsAberta(os)} style={{ backgroundColor: os.status === 'Concluída' ? '#f0fdf4' : '#fffbeb', padding: '15px', borderRadius: '12px', border: `1px solid ${os.status === 'Concluída' ? '#bbf7d0' : '#fde68a'}`, cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <strong style={{ fontSize: '14px', color: '#1e293b' }}>OS Nº {os.id.slice(-6).toUpperCase()}</strong>
                         <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '50px', backgroundColor: os.status === 'Concluída' ? '#dcfce7' : '#fef08a', color: os.status === 'Concluída' ? '#166534' : '#b45309', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -502,15 +478,15 @@ export default function PrestacaoServicos() {
           MODAL DE VISUALIZAÇÃO E ASSINATURA DE OS ABERTA
           ======================================================== */}
       {osAberta && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.9)', zIndex: 15000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '600px', borderRadius: '24px', padding: '30px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.9)', zIndex: 15000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '15px' }}>
+          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '600px', borderRadius: '20px', padding: '25px', maxHeight: '95vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, fontSize: '20px' }}>OS Nº {osAberta.id.slice(-6).toUpperCase()}</h2>
               <button onClick={() => setOsAberta(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24}/></button>
             </div>
 
             <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-              <h4 style={{ fontSize: '13px', margin: '0 0 10px 0', color: '#475569' }}>Escopo: {osAberta.tipoEscopo} {osAberta.identificacaoEscopo !== 'N/A' && `(${osAberta.identificacaoEscopo})`}</h4>
+              <h4 style={{ fontSize: '13px', margin: '0 0 10px 0', color: '#475569' }}>Escopo: {osAberta.tipoEscopo}</h4>
               <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', color: '#1e293b' }}>
                 {osAberta.itens?.map((i:any, idx:number) => (
                   <li key={idx}><strong>{i.quantidade}x</strong> {i.descricao} {i.serial ? `(SN: ${i.serial})` : ''}</li>
@@ -518,8 +494,8 @@ export default function PrestacaoServicos() {
               </ul>
             </div>
 
-            <h4 style={{ fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>Área de Assinaturas Presenciais</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '25px' }}>
+            <h4 style={{ fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>Assinaturas Presenciais</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
               <Button onClick={() => setModalAssinatura('prestador')} style={{ height: '50px', backgroundColor: osAberta.assinaturaPrestador ? '#10b981' : 'white', color: osAberta.assinaturaPrestador ? 'white' : '#3b82f6', border: '2px solid #3b82f6' }}>
                 {osAberta.assinaturaPrestador ? '✓ Prestador Assinou' : 'Assinar (Carvalho)'}
               </Button>
@@ -528,9 +504,9 @@ export default function PrestacaoServicos() {
               </Button>
             </div>
 
-            <div style={{ borderTop: '2px dashed #e2e8f0', paddingTop: '20px' }}>
-              <Button onClick={imprimirPDF} disabled={osAberta.status !== 'Concluída'} style={{ width: '100%', height: '60px', fontSize: '16px', fontWeight: 'bold', backgroundColor: osAberta.status === 'Concluída' ? '#1e293b' : '#cbd5e1' }}>
-                {osAberta.status === 'Concluída' ? 'GERAR PDF OFICIAL DE 2 VIAS' : 'Faltam Assinaturas para Gerar o PDF'}
+            <div style={{ borderTop: '2px dashed #e2e8f0', paddingTop: '15px' }}>
+              <Button onClick={imprimirPDF} disabled={osAberta.status !== 'Concluída'} style={{ width: '100%', height: '55px', fontSize: '14px', fontWeight: 'bold', backgroundColor: osAberta.status === 'Concluída' ? '#1e293b' : '#cbd5e1' }}>
+                {osAberta.status === 'Concluída' ? 'GERAR PDF (2 VIAS)' : 'Faltam Assinaturas'}
               </Button>
             </div>
           </div>
@@ -546,7 +522,7 @@ export default function PrestacaoServicos() {
              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1e293b', color: 'white', padding: '20px', textAlign: 'center' }}>
                <Smartphone size={70} style={{ marginBottom: '20px', transform: 'rotate(-90deg)', color: '#8b5cf6' }} />
                <h2>Gire o Celular</h2>
-               <p style={{ color: '#cbd5e1', maxWidth: '300px' }}>Para coletar a assinatura no formato perfeito para a OS, coloque o aparelho na <strong>horizontal</strong>.</p>
+               <p style={{ color: '#cbd5e1', maxWidth: '300px' }}>Para coletar a assinatura, coloque o aparelho na <strong>horizontal</strong>.</p>
                <Button onClick={() => setModalAssinatura('fechado')} style={{ backgroundColor: '#475569', marginTop: '20px' }}>Voltar</Button>
              </div>
            ) : (
@@ -564,9 +540,9 @@ export default function PrestacaoServicos() {
                  </div>
                </div>
 
-               <div style={{ padding: '20px', backgroundColor: 'white', display: 'flex', gap: '15px' }}>
-                 <Button onClick={limparCanvas} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569' }}>Limpar Fundo</Button>
-                 <Button onClick={salvarAssinaturaNaOS} style={{ flex: 2, backgroundColor: '#10b981' }}>Salvar Assinatura e Voltar</Button>
+               <div style={{ padding: '15px', backgroundColor: 'white', display: 'flex', gap: '10px' }}>
+                 <Button onClick={limparCanvas} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569' }}>Limpar</Button>
+                 <Button onClick={salvarAssinaturaNaOS} style={{ flex: 2, backgroundColor: '#10b981' }}>Salvar Assinatura</Button>
                </div>
              </>
            )}
