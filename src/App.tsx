@@ -12,6 +12,7 @@ import Advertencias from './pages/Advertencias';
 import GestaoAcessos from './pages/GestaoAcessos';
 import SetupSenha from './pages/SetupSenha';
 import PrestacaoServicos from './pages/PrestacaoServicos';
+import Orcamentos from './pages/Orcamentos';
 
 // Importando o Componente de Layout
 import Layout from './components/Layout';
@@ -38,6 +39,7 @@ function App() {
           <Route path="/advertencias" element={<Advertencias />} />
           <Route path="/acessos" element={<GestaoAcessos />} />
           <Route path="/prestacao-servicos" element={<PrestacaoServicos />} />
+          <Route path="/orcamentos" element={<Orcamentos />} />
         </Route>
       </Routes>
     </BrowserRouter>

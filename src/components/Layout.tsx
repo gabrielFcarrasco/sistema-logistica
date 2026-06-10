@@ -10,7 +10,8 @@ import styles from './Layout.module.css';
 import { 
   LayoutDashboard, Package, Users, ClipboardCheck, LogOut, 
   Building2, Menu, X, ShieldCheck, ShieldAlert, ShoppingCart, 
-  ArrowDownToLine, Paintbrush // ✨ Importado Paintbrush para o menu
+  ArrowDownToLine, Paintbrush, // ✨ Importado Paintbrush para o menu
+  FileSignature
 } from 'lucide-react';
 
 interface Setor {
@@ -168,6 +169,12 @@ export default function Layout() {
           <li>
             <Link to="/prestacao-servicos" className={styles.menuItem} style={{ color: '#a78bfa' }}>
               <Paintbrush size={20} style={{ marginRight: '12px' }} /> Prestação de Serviços
+            </Link>
+          </li>
+
+          <li>
+            <Link to="/orcamentos" className={styles.menuItem} style={{ color: '#3b82f6' }}>
+              <FileSignature size={20} style={{ marginRight: '12px' }} /> Orçamentos
             </Link>
           </li>
 
