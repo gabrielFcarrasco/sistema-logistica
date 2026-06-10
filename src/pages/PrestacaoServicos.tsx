@@ -10,8 +10,7 @@ import logoCarvalho from '../assets/LogoLimpa.webp';
 import { 
   Paintbrush, CheckCircle2, AlertCircle, 
   TrainFront, ClipboardSignature, PenTool, FileDown,
-  X, Briefcase, FileText, Plus, Trash2, Clock, Check, Smartphone,
-  Edit
+  X, Briefcase, FileText, Plus, Trash2, Clock, Check, Smartphone
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -52,6 +51,9 @@ export default function PrestacaoServicos() {
   const [itensOS, setItensOS] = useState<ItemOS[]>([{ quantidade: 1, descricao: '', serial: '' }]);
   const [descricaoServicoOS, setDescricaoServicoOS] = useState('');
   
+  // ✨ Novo Estado: OS em Edição
+  const [osEditando, setOsEditando] = useState<any>(null);
+
   // 4. Estados - Edição e Assinatura
   const [osEditando, setOsEditando] = useState<any>(null);
   const [osAberta, setOsAberta] = useState<any>(null);
@@ -158,49 +160,25 @@ export default function PrestacaoServicos() {
     setItensOS(novos);
   };
 
-  const iniciarEdicaoOS = (os: any) => {
-    setOsEditando(os);
-    setTipoEscopo(os.tipoEscopo || 'Peças Avulsas / Componentes');
-    setItensOS(os.itens || [{ quantidade: 1, descricao: '', serial: '' }]);
-    setDescricaoServicoOS(os.descricaoServico || '');
-    setOsAberta(null); 
-    window.scrollTo({ top: 0, behavior: 'smooth' }); 
-  };
-
-  const cancelarEdicaoOS = () => {
-    setOsEditando(null);
-    setTipoEscopo('Peças Avulsas / Componentes');
-    setItensOS([{ quantidade: 1, descricao: '', serial: '' }]);
-    setDescricaoServicoOS('');
-  };
-
   const registrarESalvarOS = async (e: React.FormEvent) => {
     e.preventDefault();
     if (itensOS.length === 0 || itensOS.some(i => !i.descricao)) return avisar("Preencha a descrição das peças no carrinho.", "erro");
 
     try {
-      if (osEditando) {
-        await updateDoc(doc(db, 'ordens_servico', osEditando.id), {
-          tipoEscopo,
-          itens: itensOS,
-          descricaoServico: descricaoServicoOS
-        });
-        avisar("Ordem de Serviço atualizada com sucesso!");
-        cancelarEdicaoOS();
-      } else {
-        await addDoc(collection(db, 'ordens_servico'), {
-          setorId: setorAtivo,
-          tipoEscopo,
-          itens: itensOS,
-          descricaoServico: descricaoServicoOS,
-          assinaturaPrestador: '',
-          assinaturaCliente: '',
-          status: 'Aguardando Assinaturas',
-          dataEmissao: serverTimestamp()
-        });
-        avisar("OS salva no banco! Aguardando coleta de assinaturas.");
-        cancelarEdicaoOS();
-      }
+      await addDoc(collection(db, 'ordens_servico'), {
+        setorId: setorAtivo,
+        tipoEscopo,
+        itens: itensOS,
+        descricaoServico: descricaoServicoOS,
+        assinaturaPrestador: '',
+        assinaturaCliente: '',
+        status: 'Aguardando Assinaturas',
+        dataEmissao: serverTimestamp()
+      });
+      avisar("OS salva no banco! Aguardando coleta de assinaturas.");
+      setTipoEscopo('Peças Avulsas / Componentes');
+      setItensOS([{ quantidade: 1, descricao: '', serial: '' }]);
+      setDescricaoServicoOS('');
     } catch (e) { avisar("Erro ao salvar a OS.", "erro"); }
   };
 
@@ -364,7 +342,7 @@ export default function PrestacaoServicos() {
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' }}>
         <Button onClick={() => setAbaAtiva('truques')} style={{ flex: 1, backgroundColor: abaAtiva === 'truques' ? '#3b82f6' : '#e2e8f0', color: abaAtiva === 'truques' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
-          <TrainFront size={18}/>Truques (Jat/Pintura)
+          <TrainFront size={18}/> Linha de Truques (Jat/Pintura)
         </Button>
         <Button onClick={() => setAbaAtiva('os')} style={{ flex: 1, backgroundColor: abaAtiva === 'os' ? '#8b5cf6' : '#e2e8f0', color: abaAtiva === 'os' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
           <ClipboardSignature size={18}/> OS Hyundai Rotem
@@ -555,16 +533,7 @@ export default function PrestacaoServicos() {
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, fontSize: '20px' }}>OS Nº {osAberta.id.slice(-6).toUpperCase()}</h2>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {osAberta.status !== 'Concluída' && (
-                  <button onClick={() => iniciarEdicaoOS(osAberta)} style={{ background: '#e0e7ff', color: '#4f46e5', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }} title="Editar OS">
-                    <Edit size={20}/>
-                  </button>
-                )}
-                <button onClick={() => setOsAberta(null)} style={{ background: '#f1f5f9', color: '#64748b', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>
-                  <X size={20}/>
-                </button>
-              </div>
+              <button onClick={() => setOsAberta(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24}/></button>
             </div>
 
             <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
