@@ -46,6 +46,9 @@ export default function PrestacaoServicos() {
   const [truqueId, setTruqueId] = useState(''); // Guarda "M000" ou ""
   const [colaboradorJateouId, setColaboradorJateouId] = useState('');
   const [jaPintado, setJaPintado] = useState(false);
+  
+  // ✨ Novo estado para guardar as seleções rápidas no Kanban
+  const [operadoresKanban, setOperadoresKanban] = useState<Record<string, string>>({});
 
   // 3. Estados - Aba OS
   const [historicoOS, setHistoricoOS] = useState<any[]>([]);
@@ -110,31 +113,31 @@ export default function PrestacaoServicos() {
     e.preventDefault();
     if (!truqueId) return avisar("Preencha os números da Plaquinha.", "erro");
     
-    // ✨ Validação Estrita do Código da Placa (M + 3 números)
+    // Validação Estrita do Código da Placa (M + 3 números)
     if (!/^M\d{3}$/.test(truqueId)) {
       return avisar("A plaquinha deve conter exatamente 3 números. Ex: 001, 045...", "erro");
     }
 
-    if (!jaPintado && !colaboradorJateouId) {
-      return avisar("Selecione o colaborador que realizará a preparação/jateamento.", "erro");
+    if (jaPintado && !colaboradorJateouId) {
+      return avisar("Como o truque já está pintado, informe quem realizou o serviço.", "erro");
     }
 
     try {
       const funcNome = colaboradorJateouId 
         ? funcionarios.find(f => f.id === colaboradorJateouId)?.nome || 'Desconhecido'
-        : 'Não Informado (Histórico)';
+        : 'A Definir'; // ✨ Fica pendente se não for informado
       
       await addDoc(collection(db, 'truques_producao'), {
         setorId: setorAtivo, 
         identificacao: truqueId, 
-        colaboradorJateouId: colaboradorJateouId || 'historico', 
+        colaboradorJateouId: colaboradorJateouId || 'pendente', // ✨ Salva como pendente
         colaboradorJateouNome: funcNome,
         status: jaPintado ? 'pintado' : 'pronto_jateamento', 
         dataCadastro: serverTimestamp(),
         ...(jaPintado ? { dataPintura: serverTimestamp(), dataPM: serverTimestamp() } : {})
       });
 
-      avisar(jaPintado ? "Truque registrado diretamente no Galpão (Pintado)!" : "Truque na fila de Lavagem e Jateamento.");
+      avisar(jaPintado ? "Truque registrado diretamente no Galpão (Pintado)!" : "Truque cadastrado para Preparação/Lavagem.");
       
       setTruqueId(''); 
       setColaboradorJateouId('');
@@ -144,9 +147,27 @@ export default function PrestacaoServicos() {
     }
   };
 
-  const avancarParaPM = async (id: string) => {
+  // ✨ Lógica inteligente: Pede o operador se ainda for 'pendente'
+  const avancarParaPM = async (t: Truque) => {
+    let colabId = t.colaboradorJateouId;
+    let colabNome = t.colaboradorJateouNome;
+
+    if (!colabId || colabId === 'pendente') {
+      const selecionado = operadoresKanban[t.id];
+      if (!selecionado) {
+        return avisar("Selecione quem realizou o jateamento antes de avançar!", "erro");
+      }
+      colabId = selecionado;
+      colabNome = funcionarios.find(f => f.id === selecionado)?.nome || 'Desconhecido';
+    }
+
     try {
-      await updateDoc(doc(db, 'truques_producao', id), { status: 'analisado_pm', dataPM: serverTimestamp() });
+      await updateDoc(doc(db, 'truques_producao', t.id), { 
+        status: 'analisado_pm', 
+        dataPM: serverTimestamp(),
+        colaboradorJateouId: colabId,
+        colaboradorJateouNome: colabNome
+      });
       avisar("Ensaio PM concluído! Peça liberada para Pintura.");
     } catch (error) { avisar("Erro ao avançar etapa.", "erro"); }
   };
@@ -439,7 +460,6 @@ export default function PrestacaoServicos() {
             
             <form onSubmit={registrarTruque} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               
-              {/* ✨ CAMPO DE IDENTIFICAÇÃO PERSONALIZADO COM "M" FIXO */}
               <div>
                 <label style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Código da Plaquinha *</label>
                 <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
@@ -461,12 +481,13 @@ export default function PrestacaoServicos() {
                 <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>Obrigatório 3 números.</span>
               </div>
               
+              {/* ✨ CAMPO DE COLABORADOR (OPCIONAL NA ENTRADA) */}
               <div>
                 <label style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
-                  Colaborador (Lavagem / Jateamento) {jaPintado ? <span style={{color: '#94a3b8', fontWeight: 'normal'}}>(Opcional)</span> : '*'}
+                  Colaborador (Selecione ou defina depois)
                 </label>
                 <select value={colaboradorJateouId} onChange={e => setColaboradorJateouId(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', outline: 'none' }}>
-                  <option value="">{jaPintado ? 'Nenhum / Não informado...' : 'Selecione...'}</option>
+                  <option value="">Deixe em branco para definir depois...</option>
                   {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                 </select>
               </div>
@@ -495,11 +516,31 @@ export default function PrestacaoServicos() {
               <h4 style={{ margin: '0 0 15px 0', color: '#334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>1. Lavagem e Jateamento</span><span style={{ backgroundColor: '#cbd5e1', padding: '2px 8px', borderRadius: '50px', fontSize: '12px', color: '#0f172a' }}>{truquesAguardandoJateamento.length}</span>
               </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
                 {truquesAguardandoJateamento.map(t => (
-                  <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #94a3b8', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                    <div><strong style={{ display: 'block', color: '#1e293b', fontSize: '15px' }}>{t.identificacao}</strong><span style={{ fontSize: '11px', color: '#64748b' }}>Jateado por: {t.colaboradorJateouNome}</span></div>
-                    <Button onClick={() => avancarParaPM(t.id)} style={{ backgroundColor: '#f59e0b', padding: '8px 12px', fontSize: '11px', display: 'flex', gap: '4px' }}>Avançar p/ PM <ArrowRight size={14}/></Button>
+                  <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #94a3b8', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ color: '#1e293b', fontSize: '15px' }}>{t.identificacao}</strong>
+                      {t.colaboradorJateouId !== 'pendente' && t.colaboradorJateouNome && (
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>Resp: {t.colaboradorJateouNome}</span>
+                      )}
+                    </div>
+                    
+                    {/* ✨ SE O TRUQUE ESTIVER SEM DONO (PENDENTE), MOSTRA A OPÇÃO DE ESCOLHER */}
+                    {(!t.colaboradorJateouId || t.colaboradorJateouId === 'pendente') && (
+                      <select 
+                        value={operadoresKanban[t.id] || ''} 
+                        onChange={e => setOperadoresKanban({...operadoresKanban, [t.id]: e.target.value})}
+                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px', outline: 'none', backgroundColor: '#f8fafc' }}
+                      >
+                        <option value="">🧑‍🔧 Quem realizou o Jateamento?</option>
+                        {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                      </select>
+                    )}
+
+                    <Button onClick={() => avancarParaPM(t)} style={{ backgroundColor: '#f59e0b', padding: '10px', fontSize: '12px', display: 'flex', justifyContent: 'center', gap: '6px', width: '100%' }}>
+                      Avançar p/ Ensaio PM <ArrowRight size={14}/>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -626,7 +667,7 @@ export default function PrestacaoServicos() {
             </form>
           </div>
 
-          {/* HISTÓRICO DE OS (Gestão de Assinaturas e PDFs) */}
+           {/* HISTÓRICO DE OS (Gestão de Assinaturas e PDFs) */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', height: 'fit-content' }}>
              <h3 style={{ fontSize: '16px', margin: '0 0 15px 0', color: '#1e293b', fontWeight: 'bold' }}>Emissões e Assinaturas Pendentes</h3>
              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '600px', overflowY: 'auto' }}>
@@ -650,7 +691,7 @@ export default function PrestacaoServicos() {
         </div>
       )}
 
-       {/* ========================================================
+      {/* ========================================================
           MODAL DE VISUALIZAÇÃO E ASSINATURA DE OS ABERTA
           ======================================================== */}
       {osAberta && (
