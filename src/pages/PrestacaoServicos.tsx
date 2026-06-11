@@ -187,7 +187,7 @@ export default function PrestacaoServicos() {
     try { docPdf.addImage(logoCarvalho, 'WEBP', 15, 10, 40, 14); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(16); docPdf.setTextColor(...azulEscuro);
     docPdf.text("RELATÓRIO DE PRODUÇÃO - TRUQUES", 105, 18, { align: 'center' });
-    docPdf.setFontSize(10); docPdf.setTextColor(100, 100, 100);
+    docPdf.setFontSize(9); docPdf.setTextColor(100, 100, 100);
     docPdf.text(`Emissão: ${dataAtual}`, 195, 20, { align: 'right' });
     docPdf.setLineWidth(0.5); docPdf.line(15, 26, 195, 26);
 
@@ -196,7 +196,7 @@ export default function PrestacaoServicos() {
     
     docPdf.setFontSize(10); docPdf.setFont("helvetica", "normal");
     docPdf.text(`1. Lavagem e Jateamento (Preparação): ${truquesAguardandoJateamento.length} peça(s)`, 15, 42);
-    docPdf.text(`2. Ensaio PM Finalizado (Prontos p/ Pintar): ${truquesAguardandoPintura.length} peça(s)`, 15, 48);
+    docPdf.text(`2. Análise c/ Partículas Magnéticas Finalizado (Prontos p/ Pintar): ${truquesAguardandoPintura.length} peça(s)`, 15, 48);
     docPdf.text(`3. Pintura Concluída (Prontos p/ Montagem): ${truquesConcluidos.length} peça(s)`, 15, 54);
 
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
