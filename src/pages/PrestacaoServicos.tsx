@@ -43,7 +43,7 @@ export default function PrestacaoServicos() {
 
   // 2. Estados - Aba Truques
   const [truques, setTruques] = useState<Truque[]>([]);
-  const [truqueId, setTruqueId] = useState('');
+  const [truqueId, setTruqueId] = useState(''); // Guarda "M000" ou ""
   const [colaboradorJateouId, setColaboradorJateouId] = useState('');
   const [jaPintado, setJaPintado] = useState(false);
 
@@ -108,12 +108,11 @@ export default function PrestacaoServicos() {
   // ==========================================
   const registrarTruque = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!truqueId) return avisar("Preencha o Código da Plaquinha.", "erro");
+    if (!truqueId) return avisar("Preencha os números da Plaquinha.", "erro");
     
     // ✨ Validação Estrita do Código da Placa (M + 3 números)
-    const idFormatado = truqueId.trim().toUpperCase();
-    if (!/^M\d{3}$/.test(idFormatado)) {
-      return avisar("A plaquinha deve começar com 'M' seguido de 3 números. Ex: M001, M045...", "erro");
+    if (!/^M\d{3}$/.test(truqueId)) {
+      return avisar("A plaquinha deve conter exatamente 3 números. Ex: 001, 045...", "erro");
     }
 
     if (!jaPintado && !colaboradorJateouId) {
@@ -127,7 +126,7 @@ export default function PrestacaoServicos() {
       
       await addDoc(collection(db, 'truques_producao'), {
         setorId: setorAtivo, 
-        identificacao: idFormatado, 
+        identificacao: truqueId, 
         colaboradorJateouId: colaboradorJateouId || 'historico', 
         colaboradorJateouNome: funcNome,
         status: jaPintado ? 'pintado' : 'pronto_jateamento', 
@@ -145,7 +144,6 @@ export default function PrestacaoServicos() {
     }
   };
 
-  // Movimenta de "Jateamento" para "Ensaio PM (Pronto para Pintar)"
   const avancarParaPM = async (id: string) => {
     try {
       await updateDoc(doc(db, 'truques_producao', id), { status: 'analisado_pm', dataPM: serverTimestamp() });
@@ -153,7 +151,6 @@ export default function PrestacaoServicos() {
     } catch (error) { avisar("Erro ao avançar etapa.", "erro"); }
   };
 
-  // Movimenta de "Ensaio PM" para "Pintado (Galpão)"
   const marcarComoPintado = async (id: string) => {
     try {
       await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() });
@@ -161,7 +158,6 @@ export default function PrestacaoServicos() {
     } catch (error) { avisar("Erro ao atualizar.", "erro"); }
   };
 
-  // 📄 GERADOR DE RELATÓRIO PDF DE PRODUÇÃO DOS TRUQUES
   const gerarRelatorioTruques = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const azulEscuro = [30, 41, 59];
@@ -174,7 +170,6 @@ export default function PrestacaoServicos() {
     docPdf.text(`Emissão: ${dataAtual}`, 195, 20, { align: 'right' });
     docPdf.setLineWidth(0.5); docPdf.line(15, 26, 195, 26);
 
-    // Resumo
     docPdf.setFontSize(11); docPdf.setTextColor(0, 0, 0); docPdf.setFont("helvetica", "bold");
     docPdf.text("RESUMO DO PÁTIO / GALPÃO", 15, 35);
     
@@ -183,10 +178,7 @@ export default function PrestacaoServicos() {
     docPdf.text(`2. Ensaio PM Finalizado (Prontos p/ Pintar): ${truquesAguardandoPintura.length} peça(s)`, 15, 48);
     docPdf.text(`3. Pintura Concluída (Prontos p/ Montagem): ${truquesConcluidos.length} peça(s)`, 15, 54);
 
-    // Tabela Detalhada
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
-    
-    // Junta todos os truques para a tabela, ordenando pelos que precisam de atenção primeiro
     const todosTruquesTabela = [
       ...truquesAguardandoJateamento.map(t => [t.identificacao, 'Lavagem / Jateamento', t.colaboradorJateouNome]),
       ...truquesAguardandoPintura.map(t => [t.identificacao, 'Aguardando Pintura', t.colaboradorJateouNome]),
@@ -209,13 +201,12 @@ export default function PrestacaoServicos() {
     docPdf.save(`Relatorio_Producao_Truques_${dataAtual.replace(/\//g, '-')}.pdf`);
   };
 
-  // Separação dos Truques para o Kanban
   const truquesAguardandoJateamento = truques.filter(t => t.status === 'pronto_jateamento');
   const truquesAguardandoPintura = truques.filter(t => t.status === 'analisado_pm');
   const truquesConcluidos = truques.filter(t => t.status === 'pintado');
 
   // ==========================================
-  // FUNÇÕES - OS DINÂMICA (CARRINHO E ESCOPO)
+  // FUNÇÕES - OS DINÂMICA
   // ==========================================
   const adicionarItemOS = () => setItensOS([...itensOS, { quantidade: 1, descricao: '', serial: '' }]);
   const removerItemOS = (index: number) => setItensOS(itensOS.filter((_, i) => i !== index));
@@ -339,7 +330,6 @@ export default function PrestacaoServicos() {
     if (!osAberta) return;
     const docPdf = new jsPDF('p', 'mm', 'a4');
     
-    // FUNÇÃO INTERNA PARA GERAR CADA VIA DA OS
     const gerarViaOS = (tituloVia: string) => {
       const azulEscuro = [30, 41, 59];
       const dataDoc = osAberta.dataEmissao?.toDate ? osAberta.dataEmissao.toDate().toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
@@ -449,7 +439,27 @@ export default function PrestacaoServicos() {
             
             <form onSubmit={registrarTruque} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               
-              <Input label="Código da Plaquinha (Obrigatório 'M' e 3 números) *" placeholder="Ex: M001" value={truqueId} onChange={e => setTruqueId(e.target.value)} />
+              {/* ✨ CAMPO DE IDENTIFICAÇÃO PERSONALIZADO COM "M" FIXO */}
+              <div>
+                <label style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Código da Plaquinha *</label>
+                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+                  <span style={{ padding: '12px 15px', backgroundColor: '#e2e8f0', color: '#475569', fontWeight: 'bold', borderRight: '1px solid #cbd5e1' }}>M</span>
+                  <input 
+                    type="text" 
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={3}
+                    value={truqueId.replace('M', '')}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\D/g, ''); 
+                      setTruqueId(val ? `M${val}` : ''); 
+                    }}
+                    placeholder="000"
+                    style={{ width: '100%', padding: '12px', border: 'none', backgroundColor: 'transparent', outline: 'none', fontSize: '16px', fontWeight: 'bold', color: '#1e293b' }}
+                  />
+                </div>
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>Obrigatório 3 números.</span>
+              </div>
               
               <div>
                 <label style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
@@ -640,7 +650,7 @@ export default function PrestacaoServicos() {
         </div>
       )}
 
-      {/* ========================================================
+       {/* ========================================================
           MODAL DE VISUALIZAÇÃO E ASSINATURA DE OS ABERTA
           ======================================================== */}
       {osAberta && (
