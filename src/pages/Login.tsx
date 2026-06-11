@@ -1,5 +1,5 @@
 // src/pages/Login.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -23,6 +23,22 @@ export default function Login() {
   
   const navigate = useNavigate();
 
+  // ✨ VERIFICAÇÃO DE SESSÃO ATIVA E MEMÓRIA DE UTILIZADOR
+  useEffect(() => {
+    // 1. Mantém Logado: Se já tem ID, vai direto para o painel
+    const usuarioLogadoId = localStorage.getItem('userId');
+    if (usuarioLogadoId) {
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    // 2. Lembra o Usuário: Se já logou antes (e fez logout), preenche o nome
+    const ultimoUsuario = localStorage.getItem('lastUser');
+    if (ultimoUsuario) {
+      setUsuario(ultimoUsuario);
+    }
+  }, [navigate]);
+
   const fazerLogin = async (evento: React.FormEvent) => {
     evento.preventDefault();
     setErro('');
@@ -34,14 +50,14 @@ export default function Login() {
       const nomeDev = import.meta.env.VITE_DEV_USER_NAME;
 
       if (usuario === 'dev' && senha === senhaDev && senhaDev !== undefined) {
-        setEntrando(true); // Sobe a cortina de loading!
+        setEntrando(true); 
         
         localStorage.setItem('userLevel', 'socio');
         localStorage.setItem('userName', nomeDev || 'Admin Dev');
         localStorage.setItem('userId', 'ID_MODO_DEV');
         localStorage.setItem('setorId', 'geral'); 
+        localStorage.setItem('lastUser', usuario); // Salva para lembrar na próxima
         
-        // Segura 1 segundo para dar tempo do Dashboard carregar na memória
         setTimeout(() => navigate('/dashboard'), 1000);
         return; 
       }
@@ -80,6 +96,7 @@ export default function Login() {
         localStorage.setItem('userLevel', dados.nivel);
         localStorage.setItem('userName', dados.nome);
         localStorage.setItem('userId', usuarioDoc.id);
+        localStorage.setItem('lastUser', usuario); // Lembra o nome de usuário (sem o @carvalho se ele não digitou)
         if (dados.setorId) localStorage.setItem('setorId', dados.setorId);
         
         // Segura 1 segundo para transição suave sem tela branca
@@ -123,9 +140,17 @@ export default function Login() {
               required value={usuario} onChange={(e) => setUsuario(e.target.value)}
               placeholder="Ex: joao.silva" 
             />
+            {/* ✨ TECLADO NUMÉRICO E LIMITE DE 6 DÍGITOS */}
             <Input 
-              label="Senha" icone={<Lock size={18} />} type="password" 
-              required maxLength={6} value={senha} onChange={(e) => setSenha(e.target.value.replace(/\D/g, ''))}
+              label="Senha" 
+              icone={<Lock size={18} />} 
+              type="password" 
+              required 
+              maxLength={6} 
+              inputMode="numeric" 
+              pattern="[0-9]*"
+              value={senha} 
+              onChange={(e) => setSenha(e.target.value.replace(/\D/g, ''))}
               placeholder="6 números" 
             />
             <Button type="submit" variante="primario" disabled={loading} style={{ width: '100%', padding: '14px', marginTop: '10px', display: 'flex', justifyContent: 'center' }}>
