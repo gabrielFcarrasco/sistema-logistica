@@ -57,7 +57,7 @@ export default function PrestacaoServicos() {
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' }}>
         <Button onClick={() => setAbaAtiva('truques')} style={{ flex: 1, backgroundColor: abaAtiva === 'truques' ? '#3b82f6' : '#e2e8f0', color: abaAtiva === 'truques' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
-          <TrainFront size={18}/> Truques (Kanban de Produção)
+          <TrainFront size={18}/> Truques e Jateamento
         </Button>
         <Button onClick={() => setAbaAtiva('os')} style={{ flex: 1, backgroundColor: abaAtiva === 'os' ? '#8b5cf6' : '#e2e8f0', color: abaAtiva === 'os' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
           <ClipboardSignature size={18}/> OS Hyundai Rotem
