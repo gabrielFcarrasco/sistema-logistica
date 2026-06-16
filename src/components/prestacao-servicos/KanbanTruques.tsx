@@ -77,7 +77,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     docPdf.setFontSize(11); docPdf.setTextColor(0, 0, 0); docPdf.text("RESUMO DO PÁTIO / GALPÃO", 15, 35);
     docPdf.setFontSize(10); docPdf.setFont("helvetica", "normal");
     docPdf.text(`1. Lavagem e Jateamento: ${truquesAguardandoJateamento.length} peça(s)`, 15, 42);
-    docPdf.text(`2. Analisados PM (Prontos p/ Pintar): ${truquesAguardandoPintura.length} peça(s)`, 15, 48);
+    docPdf.text(`2. Analisados c/ Partículas Magnéticas (Prontos p/ Pintar): ${truquesAguardandoPintura.length} peça(s)`, 15, 48);
     docPdf.text(`3. Pintura Concluída: ${truquesConcluidos.length} peça(s)`, 15, 54);
 
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
@@ -137,18 +137,18 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{t.identificacao}</strong></div>
                 {(!t.colaboradorJateouId || t.colaboradorJateouId === 'pendente') && (
                   <select value={operadoresKanban[t.id] || ''} onChange={e => setOperadoresKanban({...operadoresKanban, [t.id]: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '10px', borderRadius: '6px' }}>
-                    <option value="">🧑‍🔧 Quem realizou?</option>
+                    <option value=""> Quem realizou?</option>
                     {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                   </select>
                 )}
-                <Button onClick={() => avancarParaPM(t)} style={{ backgroundColor: '#f59e0b', marginTop: '10px', width: '100%' }}>Avançar p/ PM <ArrowRight size={14}/></Button>
+                <Button onClick={() => avancarParaPM(t)} style={{ backgroundColor: '#f59e0b', marginTop: '10px', width: '100%' }}>Avançar p/ Partículas Magnéticas<ArrowRight size={14}/></Button>
               </div>
             ))}
           </div>
         </div>
         
         <div style={{ backgroundColor: '#fffbeb', padding: '20px', borderRadius: '16px' }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#b45309' }}>2. Ensaio PM ({truquesAguardandoPintura.length})</h4>
+          <h4 style={{ margin: '0 0 15px 0', color: '#b45309' }}>2. Análise c/ Partículas Magnéticas ({truquesAguardandoPintura.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
             {truquesAguardandoPintura.map(t => (
               <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #fde047', display: 'flex', justifyContent: 'space-between' }}>
