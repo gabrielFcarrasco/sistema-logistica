@@ -5,7 +5,7 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, get
 import { db } from '../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../assets/LogoLimpa.webp'; 
+import logoCarvalho from '../assets/logopdf.png'; 
 import { 
   ShoppingCart, Plus, Trash2, Save, Search, 
   FileDown, Package, FileText, ListChecks, X,
@@ -69,7 +69,7 @@ export default function PedidosCompra() {
       // Usa o ID real do banco ou um fallback seguro
       const numero = dados.id ? dados.id.slice(-6).toUpperCase() : "SOLIC";
       
-      try { doc.addImage(logoCarvalho, 'WEBP', 14, 10, 35, 12); } catch (e) {}
+      try { doc.addImage(logoCarvalho, 'PNG', 14, 10, 35, 12); } catch (e) {}
 
       if (estilo === 'personalizado') {
         doc.setFillColor(...azulCarvalho); doc.rect(230, 10, 56, 25, "F");

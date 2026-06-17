@@ -5,7 +5,7 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, upd
 import { db } from '../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../assets/LogoLimpa.webp';
+import logoCarvalho from '../assets/logopdf.png';
 
 import { 
   FileSignature, CheckCircle2, AlertCircle, 
@@ -98,7 +98,7 @@ export default function Orcamentos() {
     const dataDoc = dados.dataEmissao?.toDate ? dados.dataEmissao.toDate().toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
     const numeroOrcamento = dados.id ? dados.id.slice(-6).toUpperCase() : "NOVO";
 
-    try { docPdf.addImage(logoCarvalho, 'WEBP', 15, 10, 45, 15); } catch(e){}
+    try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 45, 15); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(18); docPdf.setTextColor(...azulEscuro);
     docPdf.text("PROPOSTA COMERCIAL", 105, 18, { align: 'center' });
     docPdf.setFontSize(10); docPdf.setTextColor(100, 100, 100);

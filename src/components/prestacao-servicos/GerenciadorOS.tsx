@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, upd
 import { db } from '../../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../../assets/LogoLimpa.webp';
+import logoCarvalho from '../../assets/logopdf.png';
 
 import { FileText, Plus, Trash2, Check, Clock, X, Edit, Eye, Smartphone, Send, Download } from 'lucide-react';
 import Button from '../ui/Button';
@@ -117,7 +117,7 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
     const tituloVia = tipoVia === 'cliente' ? "1ª VIA - CLIENTE" : "2ª VIA - CONTROLE INTERNO";
 
     // Logo e Título
-    try { docPdf.addImage(logoCarvalho, 'WEBP', 15, 10, 40, 14); } catch(e){}
+    try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 40, 14); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(18); docPdf.setTextColor(...azulEscuro);
     docPdf.text("ORDEM DE SERVIÇO", 105, 18, { align: 'center' });
     

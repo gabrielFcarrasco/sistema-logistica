@@ -12,8 +12,10 @@ import Orcamentos from './pages/Orcamentos';
 import Entrega from './pages/Entrega'; 
 import Estoque from './pages/Estoque';
 import PedidosCompra from './pages/PedidosCompra';
+import Advertencias from './pages/Advertencias';
 
-// ✨ NOVA PÁGINA DE ASSINATURA PÚBLICA
+
+// === NOVA PÁGINA DE ASSINATURA PÚBLICA ===
 import AssinaturaExterna from './pages/AssinaturaExterna'; 
 
 export default function App() {
@@ -21,27 +23,21 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         
-        {/* =========================================
-            ROTAS PÚBLICAS (Sem exigência de Senha)
-            ========================================= */}
+        {/* === ROTAS PÚBLICAS === */}
         <Route path="/" element={<Login />} />
-        
-        {/* Rota exclusiva para o cliente da Hyundai assinar */}
         <Route path="/assinar-os/:id" element={<AssinaturaExterna />} />
 
-        {/* =========================================
-            ROTAS PRIVADAS (Protegidas pelo Layout)
-            ========================================= */}
+        {/* === ROTAS PRIVADAS === */}
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/prestacao-servicos" element={<PrestacaoServicos />} />
           <Route path="/funcionarios" element={<Funcionarios />} />
           <Route path="/orcamentos" element={<Orcamentos />} />
-          
-          {/* A Rota de Entrega que estava a dar erro de "No routes matched" */}
           <Route path="/entrega" element={<Entrega />} />
           <Route path="/estoque" element={<Estoque />} />
           <Route path="/pedidos-compra" element={<PedidosCompra />} />
+          <Route path="/advertencias" element={<Advertencias />} />
+          
         </Route>
 
       </Routes>
