@@ -19,9 +19,40 @@ export default function Advertencias() {
   };
 
   useEffect(() => {
-    const unsubFunc = onSnapshot(collection(db, 'funcionarios'), (s) => setFuncionarios(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubAdv = onSnapshot(query(collection(db, 'advertencias'), orderBy('createdAt', 'desc')), (s) => setAdvertencias(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => { unsubFunc(); unsubAdv(); };
+    // 1. Escuta a coleção de Funcionários COM tratamento de erros
+    const qFunc = collection(db, 'funcionarios');
+    const unsubFunc = onSnapshot(
+      qFunc, 
+      (snapshot) => {
+        // Se der certo, faz o map normalmente
+        setFuncionarios(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      },
+      (error) => {
+        // Se der erro de permissão, captura aqui e evita que o app quebre!
+        console.error("Erro ao ler funcionários:", error);
+        avisar("Sem permissão para aceder à lista de funcionários.", "erro");
+      }
+    );
+
+    // 2. Escuta a coleção de Advertências COM tratamento de erros
+    const qAdv = query(collection(db, 'advertencias'), orderBy('createdAt', 'desc'));
+    const unsubAdv = onSnapshot(
+      qAdv, 
+      (snapshot) => {
+        // Se der certo, faz o map
+        setAdvertencias(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      },
+      (error) => {
+        // Evita o "Cannot read properties of undefined (reading 'map')"
+        console.error("Erro ao ler advertências:", error);
+        avisar("Sem permissão para aceder ao histórico de advertências.", "erro");
+      }
+    );
+
+    return () => { 
+      unsubFunc(); 
+      unsubAdv(); 
+    };
   }, []);
 
   return (
