@@ -19,25 +19,8 @@ export default function Advertencias() {
   };
 
   useEffect(() => {
-    const qFunc = collection(db, 'funcionarios');
-    const unsubFunc = onSnapshot(qFunc, (snapshot) => {
-      // Blindagem anti-erro de map e permissão
-      const lista = snapshot?.docs?.map(d => ({ id: d.id, ...d.data() })) || [];
-      setFuncionarios(lista);
-    }, (error) => {
-      console.error("Aviso: Firebase bloqueou leitura de funcionários:", error.message);
-      setFuncionarios([]); // Garante lista vazia em caso de erro
-    });
-
-    const qAdv = query(collection(db, 'advertencias'), orderBy('createdAt', 'desc'));
-    const unsubAdv = onSnapshot(qAdv, (snapshot) => {
-      const lista = snapshot?.docs?.map(d => ({ id: d.id, ...d.data() })) || [];
-      setAdvertencias(lista);
-    }, (error) => {
-      console.error("Aviso: Firebase bloqueou leitura de advertências:", error.message);
-      setAdvertencias([]); // Garante lista vazia em caso de erro
-    });
-
+    const unsubFunc = onSnapshot(collection(db, 'funcionarios'), (s) => setFuncionarios(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubAdv = onSnapshot(query(collection(db, 'advertencias'), orderBy('createdAt', 'desc')), (s) => setAdvertencias(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => { unsubFunc(); unsubAdv(); };
   }, []);
 
