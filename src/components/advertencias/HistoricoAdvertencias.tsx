@@ -7,10 +7,18 @@ import Button from '../ui/Button';
 interface Advertencia { 
   id: string; 
   funcionarioNome: string; 
+  funcionarioCpf?: string; 
+  funcionarioRg?: string;
   tipo: 'oral' | 'escrita';
   motivo: string; 
   dataOcorrencia: string; 
   horaOcorrencia?: string;
+  metodoAssinatura?: 'digital' | 'fisica' | 'recusa';
+  assinaturaBase64?: string; 
+  recusouAssinar?: boolean;
+  nomeTestemunha1?: string;
+  nomeTestemunha2?: string;
+  fotoOcorrenciaBase64?: string;
 }
 
 interface Props {
@@ -18,18 +26,135 @@ interface Props {
 }
 
 export default function HistoricoAdvertencias({ advertencias }: Props) {
-  
+
   const gerarPDFFormal = (adv: Advertencia) => {
-    // ... (Mantenha aqui a sua função de gerar PDF intacta)
+    const docPdf = new jsPDF('p', 'mm', 'a4');
+    const dataAtual = new Date().toLocaleDateString('pt-BR');
+    
+    // Data formatada para o texto do PDF (ex: 18/06/2026)
+    const dataFato = adv.dataOcorrencia.split('-').reverse().join('/') + (adv.horaOcorrencia ? ` às ${adv.horaOcorrencia}` : '');
+    const tituloDoc = adv.tipo === 'escrita' ? "COMUNICAÇÃO DE ADVERTÊNCIA DISCIPLINAR" : "REGISTRO DE ORIENTAÇÃO VERBAL";
+    
+    // CABEÇALHO
+    try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 40, 14); } catch(e){}
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(14); docPdf.setTextColor(30, 41, 59);
+    docPdf.text("CARVALHO FUNILARIA E PINTURAS LTDA", 105, 16, { align: 'center' });
+    docPdf.setFontSize(9); docPdf.setFont("helvetica", "normal");
+    docPdf.text("CNPJ: 31.362.302/0001-33", 105, 21, { align: 'center' });
+    docPdf.setLineWidth(0.5); docPdf.line(15, 26, 195, 26);
+
+    // TÍTULO
+    docPdf.setFontSize(16); docPdf.setFont("helvetica", "bold"); docPdf.setTextColor(0, 0, 0);
+    docPdf.text(tituloDoc, 105, 38, { align: 'center' });
+
+    // QUADRO COLABORADOR
+    docPdf.setFillColor(241, 245, 249); docPdf.rect(15, 45, 180, 22, "F");
+    docPdf.setFontSize(10); docPdf.setFont("helvetica", "bold");
+    docPdf.text(`COLABORADOR: ${adv.funcionarioNome.toUpperCase()}`, 18, 52);
+    docPdf.setFont("helvetica", "normal");
+    docPdf.text(`CPF: ${adv.funcionarioCpf || 'Não cadastrado'}`, 18, 58);
+    docPdf.text(`RG: ${adv.funcionarioRg || 'Não cadastrado'}`, 105, 58);
+    docPdf.text(`Data/Hora da Ocorrência: ${dataFato}`, 18, 63);
+
+    // INTRODUÇÃO
+    docPdf.setFontSize(11);
+    let textoIntro = adv.tipo === 'escrita' ? 
+      `Pela presente, vimos comunicar-lhe que está sendo aplicada a presente ADVERTÊNCIA DISCIPLINAR ESCRITA, em razão da infração cometida durante o exercício de suas funções, especificamente descrita abaixo:` : 
+      `Pela presente, registramos formalmente que o(a) colaborador(a) acima qualificado(a) recebeu uma ORIENTAÇÃO / ADVERTÊNCIA VERBAL, a fim de alinhar condutas e procedimentos, referentes à seguinte ocorrência:`;
+    
+    const splitIntro = docPdf.splitTextToSize(textoIntro, 180);
+    docPdf.text(splitIntro, 15, 78);
+
+    // MOTIVO
+    const yMotivo = 78 + (splitIntro.length * 5) + 5;
+    docPdf.setFont("helvetica", "bold");
+    docPdf.text("DESCRIÇÃO DOS FATOS (MOTIVO):", 15, yMotivo);
+    
+    docPdf.setFont("helvetica", "normal");
+    const splitMotivo = docPdf.splitTextToSize(adv.motivo, 174);
+    const alturaQuadroMotivo = (splitMotivo.length * 5) + 8;
+    docPdf.setDrawColor(203, 213, 225); 
+    docPdf.rect(15, yMotivo + 3, 180, alturaQuadroMotivo);
+    docPdf.text(splitMotivo, 18, yMotivo + 9);
+
+    // CONCLUSÃO
+    const yConclusao = yMotivo + alturaQuadroMotivo + 10;
+    const textoConclusao = `Esclarecemos que a repetição de atitudes desta natureza, ou o cometimento de outras faltas, demonstrará desinteresse no cumprimento de suas obrigações contratuais e poderá acarretar sanções mais severas, tais como suspensão disciplinar e até mesmo a rescisão do contrato de trabalho por JUSTA CAUSA, conforme preceitua o Artigo 482 da Consolidação das Leis do Trabalho (CLT). Solicitamos, portanto, que observe rigorosamente as normas internas da empresa.`;
+    
+    const splitConclusao = docPdf.splitTextToSize(textoConclusao, 180);
+    docPdf.text(splitConclusao, 15, yConclusao);
+
+    const yLocalData = yConclusao + (splitConclusao.length * 5) + 15;
+    docPdf.text(`Araraquara/SP, ${dataAtual}.`, 195, yLocalData, { align: 'right' });
+
+    // ASSINATURAS
+    const yAssinaturas = yLocalData + 35;
+    docPdf.setDrawColor(0,0,0);
+    
+    docPdf.line(20, yAssinaturas, 80, yAssinaturas);
+    docPdf.setFontSize(9); docPdf.setFont("helvetica", "bold");
+    docPdf.text("A EMPRESA", 50, yAssinaturas + 5, { align: 'center' });
+    docPdf.setFont("helvetica", "normal");
+    docPdf.text("Carvalho Funilaria e Pinturas Ltda", 50, yAssinaturas + 10, { align: 'center' });
+
+    if (adv.recusouAssinar) {
+      docPdf.setFont("helvetica", "bold"); docPdf.setTextColor(220, 38, 38);
+      docPdf.text("O COLABORADOR RECUSOU-SE A ASSINAR", 150, yAssinaturas - 5, { align: 'center' });
+      docPdf.setTextColor(0, 0, 0); docPdf.line(120, yAssinaturas, 180, yAssinaturas);
+      docPdf.setFont("helvetica", "bold"); docPdf.text("Ciente e de acordo:", 150, yAssinaturas + 5, { align: 'center' });
+      docPdf.setFont("helvetica", "normal"); docPdf.text(adv.funcionarioNome, 150, yAssinaturas + 10, { align: 'center' });
+    } else {
+      if (adv.assinaturaBase64) {
+        try { docPdf.addImage(adv.assinaturaBase64, 'PNG', 130, yAssinaturas - 25, 40, 20); } catch(e){}
+      }
+      docPdf.line(120, yAssinaturas, 180, yAssinaturas);
+      docPdf.setFont("helvetica", "bold"); docPdf.text("Ciente e de acordo:", 150, yAssinaturas + 5, { align: 'center' });
+      docPdf.setFont("helvetica", "normal"); docPdf.text(adv.funcionarioNome, 150, yAssinaturas + 10, { align: 'center' });
+    }
+
+    // TESTEMUNHAS
+    const yTestemunhas = yAssinaturas + 35;
+    docPdf.setFont("helvetica", "bold");
+    docPdf.text(adv.recusouAssinar ? "TESTEMUNHAS OBRIGATÓRIAS (Devido à recusa de assinatura):" : "TESTEMUNHAS (Opcional, em caso de recusa posterior de assinatura):", 15, yTestemunhas - 5);
+    docPdf.setFont("helvetica", "normal");
+    
+    docPdf.line(20, yTestemunhas + 10, 80, yTestemunhas + 10);
+    docPdf.text(adv.nomeTestemunha1 ? `1. Nome: ${adv.nomeTestemunha1} / CPF:` : "1. Nome / CPF:", 20, yTestemunhas + 15);
+    
+    docPdf.line(120, yTestemunhas + 10, 180, yTestemunhas + 10);
+    docPdf.text(adv.nomeTestemunha2 ? `2. Nome: ${adv.nomeTestemunha2} / CPF:` : "2. Nome / CPF:", 120, yTestemunhas + 15);
+
+    // PÁGINA 2: ANEXO FOTOGRÁFICO
+    if (adv.fotoOcorrenciaBase64) {
+      docPdf.addPage();
+      docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(16);
+      docPdf.text("ANEXO FOTOGRÁFICO - EVIDÊNCIA DA INFRAÇÃO", 105, 20, { align: 'center' });
+      docPdf.setLineWidth(0.5); docPdf.line(15, 25, 195, 25);
+      
+      docPdf.setFontSize(10); docPdf.setFont("helvetica", "normal");
+      docPdf.text(`Documento Ref.: ${tituloDoc}`, 15, 35);
+      docPdf.text(`Colaborador: ${adv.funcionarioNome}`, 15, 40);
+      try {
+        docPdf.addImage(adv.fotoOcorrenciaBase64, 'JPEG', 25, 55, 160, 120);
+        docPdf.setDrawColor(203, 213, 225); docPdf.rect(25, 55, 160, 120);
+      } catch(e) {}
+    }
+
+    // ✨ A MÁGICA ACONTECE AQUI: Gerando um nome de ficheiro único e organizado
+    const dataArquivo = adv.dataOcorrencia.split('-').reverse().join('-'); // Gera formato DD-MM-YYYY
+    const primeiroNome = adv.funcionarioNome.split(' ')[0]; // Pega apenas o primeiro nome
+    const tipoAviso = adv.tipo === 'escrita' ? 'Advertencia' : 'Orientacao';
+
+    // Salva o ficheiro com o novo padrão: Ex: Orientacao_Jobson_18-06-2026.pdf
+    docPdf.save(`${tipoAviso}_${primeiroNome}_${dataArquivo}.pdf`);
   };
 
   return (
     <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: 'var(--sombra-card)' }}>
       <h3 style={{ marginBottom: '15px', fontSize: '16px', color: '#1e293b' }}>Histórico do RH</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '650px', overflowY: 'auto' }}>
-        {/* ✨ PROTEÇÃO AQUI: Se advertencias for undefined, usamos || [] para evitar o erro de map */}
         {(advertencias || []).length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Nenhum registo efetuado.</p>
+          <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Nenhum registo efetuado ainda.</p>
         ) : (
           (advertencias || []).map(adv => (
             <div key={adv.id} style={{ border: '1px solid #e2e8f0', padding: '15px', borderRadius: '8px', backgroundColor: adv.tipo === 'oral' ? '#fffbeb' : '#fff5f5' }}>
@@ -37,9 +162,13 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
                 <strong style={{ color: '#1e293b', fontSize: '14px' }}>{adv.funcionarioNome}</strong>
                 <span style={{ fontSize: '11px', fontWeight: 'bold', color: adv.tipo === 'oral' ? '#b45309' : '#b91c1c' }}>{adv.tipo.toUpperCase()}</span>
               </div>
-              <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 10px 0' }}>{adv.motivo}</p>
-              <Button onClick={() => gerarPDFFormal(adv)} style={{ width: '100%', backgroundColor: 'white', color: '#1e293b', border: '1px solid #cbd5e1' }}>
-                <Download size={16} /> Baixar PDF
+              <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '8px' }}>
+                Data: {adv.dataOcorrencia.split('-').reverse().join('/')}
+              </span>
+              <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 10px 0', lineHeight: '1.4' }}>{adv.motivo}</p>
+              
+              <Button onClick={() => gerarPDFFormal(adv)} style={{ width: '100%', backgroundColor: 'white', color: '#1e293b', border: '1px solid #cbd5e1', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                <Download size={16} /> Baixar PDF Jurídico
               </Button>
             </div>
           ))

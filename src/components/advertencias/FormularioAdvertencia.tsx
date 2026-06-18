@@ -36,7 +36,6 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
   const [fotoOcorrenciaBase64, setFotoOcorrenciaBase64] = useState('');
   const fotoInputRef = useRef<HTMLInputElement>(null);
   
-  // ✨ NOVO: Controle inteligente de como a assinatura será recolhida
   const [metodoAssinatura, setMetodoAssinatura] = useState<'digital' | 'fisica' | 'recusa'>('digital');
   const [modalAssinaturaAberto, setModalAssinaturaAberto] = useState(false);
   const [assinaturaBase64, setAssinaturaBase64] = useState('');
@@ -44,34 +43,49 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
   const [nomeTestemunha1, setNomeTestemunha1] = useState('');
   const [nomeTestemunha2, setNomeTestemunha2] = useState('');
 
+  // ✨ FUNÇÃO ATUALIZADA: Mais rápida e à prova de falhas em dispositivos móveis
   const processarFotoOcorrencia = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const MAX_SIZE = 800;
-        let width = img.width; let height = img.height;
-        if (width > height && width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } 
-        else if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-        canvas.width = width; canvas.height = height;
-        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
-        setFotoOcorrenciaBase64(canvas.toDataURL('image/jpeg', 0.6));
+        let width = img.width; 
+        let height = img.height;
+        
+        if (width > height && width > MAX_SIZE) { 
+          height *= MAX_SIZE / width; 
+          width = MAX_SIZE; 
+        } else if (height > MAX_SIZE) { 
+          width *= MAX_SIZE / height; 
+          height = MAX_SIZE; 
+        }
+        
+        canvas.width = width; 
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          setFotoOcorrenciaBase64(canvas.toDataURL('image/jpeg', 0.6));
+        }
       };
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
+
+    // ✨ TRUQUE DE MESTRE: Limpar o input permite anexar a mesma foto de novo se você apagar sem querer
+    e.target.value = '';
   };
 
   const registrarAdvertencia = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validações Básicas
     if (!funcionarioId || !dataOcorrencia) return avisar("Preencha Colaborador e Data.", "erro");
     
-    // ✨ Validações Jurídicas Dinâmicas
     if (tipoAdvertencia === 'escrita') {
       if (metodoAssinatura === 'digital' && !assinaturaBase64) {
         return avisar("Recolha a assinatura digital no aparelho ou mude o método de assinatura.", "erro");
@@ -105,7 +119,6 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
       
       avisar("Registro disciplinar salvo com sucesso!");
       
-      // Limpar formulário
       setFuncionarioId(''); setMotivoComum(''); setDetalhesMotivo(''); 
       setDataOcorrencia(''); setHoraOcorrencia(''); setAssinaturaBase64(''); 
       setFotoOcorrenciaBase64(''); setMetodoAssinatura('digital');
@@ -171,7 +184,8 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
                 <Camera size={18} style={{ marginRight: '8px' }} /> Anexar Foto de Evidência
               </Button>
             )}
-            <input type="file" accept="image/*" capture="environment" ref={fotoInputRef} onChange={processarFotoOcorrencia} style={{ display: 'none' }} />
+            {/* ✨ ATUALIZADO: Removido o capture="environment" para não bloquear a galeria do telemóvel */}
+            <input type="file" accept="image/*" ref={fotoInputRef} onChange={processarFotoOcorrencia} style={{ display: 'none' }} />
           </div>
         </div>
 
@@ -185,7 +199,6 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
             </div>
           ) : (
             <>
-              {/* Seletor de Método de Assinatura */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Como será colhida a assinatura?</label>
                 <select value={metodoAssinatura} onChange={e => setMetodoAssinatura(e.target.value as any)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}>
@@ -195,7 +208,6 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
                 </select>
               </div>
 
-              {/* Condicionais baseadas no método escolhido */}
               {metodoAssinatura === 'digital' && (
                 <div onClick={() => setModalAssinaturaAberto(true)} style={{ padding: '15px', border: '2px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center', cursor: 'pointer', backgroundColor: '#f8fafc' }}>
                   {assinaturaBase64 ? (
