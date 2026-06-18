@@ -30,10 +30,16 @@ export default function PrestacaoServicos() {
     setTimeout(() => setNotificacao(null), 4000);
   };
 
-  useEffect(() => {
+ useEffect(() => {
     if (!setorAtivo) return;
     const qFunc = query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo));
-    const unsubFunc = onSnapshot(qFunc, (snap) => setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubFunc = onSnapshot(qFunc, (snap) => {
+       // ✨ IGNORA TOTALMENTE OS DESLIGADOS NA PRODUÇÃO
+       const ativos = snap.docs
+         .map(d => ({ id: d.id, ...d.data() }))
+         .filter((f: any) => f.status !== 'desligado');
+       setFuncionarios(ativos);
+    });
     return () => unsubFunc();
   }, [setorAtivo]);
 

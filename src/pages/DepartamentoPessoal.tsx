@@ -1,30 +1,24 @@
-// src/pages/Funcionarios.tsx
+// src/pages/DepartamentoPessoal.tsx
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
-import { Users, CheckCircle2, GraduationCap, ShieldCheck } from 'lucide-react';
+import { Briefcase, CheckCircle2, UserPlus, Users, FileText } from 'lucide-react';
 import Button from '../components/ui/Button';
 
-// Importação dos Módulos Separados
-import ModalTreinamentos from '../components/treinamentos/ModalTreinamentos';
-import ModalDSS from '../components/dss/ModalDSS'; // ✨ DSS de volta!
+// Nossos Componentes Descentralizados de RH
 import FormularioCadastro from '../components/funcionarios/FormularioCadastro';
 import ModalFicha from '../components/funcionarios/ModalFicha';
 
-export default function Funcionarios() {
+export default function DepartamentoPessoal() {
   const [setores, setSetores] = useState<any[]>([]);
   const [funcionarios, setFuncionarios] = useState<any[]>([]);
   const [estoque, setEstoque] = useState<any[]>([]); 
   const [treinamentosGlobais, setTreinamentosGlobais] = useState<any[]>([]);
-  const [dssGlobais, setDssGlobais] = useState<any[]>([]); // ✨ Estado do DSS
+  const [dssGlobais, setDssGlobais] = useState<any[]>([]);
   
   const [filtroStatus, setFiltroStatus] = useState<'ativo' | 'desligado'>('ativo');
   const [fichaAberta, setFichaAberta] = useState<any | null>(null);
-  
-  const [modalTreinamento, setModalTreinamento] = useState(false);
-  const [modalDSS, setModalDSS] = useState(false); // ✨ Controle do Modal DSS
-  
   const [notificacao, setNotificacao] = useState<{msg: string, tipo: 'sucesso' | 'erro'} | null>(null);
 
   const avisar = (msg: string, tipo: 'sucesso' | 'erro' = 'sucesso') => {
@@ -39,14 +33,11 @@ export default function Funcionarios() {
     
     const unsubTreinos = onSnapshot(collection(db, 'treinamentos'), (s) => {
       const docs = s.docs.map(d => ({ id: d.id, ...d.data() }));
-      docs.sort((a:any, b:any) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
       setTreinamentosGlobais(docs);
     });
 
-    // ✨ BUSCA DO DSS
     const unsubDSS = onSnapshot(collection(db, 'dss'), (s) => {
       const docs = s.docs.map(d => ({ id: d.id, ...d.data() }));
-      docs.sort((a:any, b:any) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
       setDssGlobais(docs);
     });
     
@@ -59,41 +50,30 @@ export default function Funcionarios() {
     <div style={{ maxWidth: '1100px', margin: '0 auto', paddingBottom: '40px', padding: '10px' }}>
       
       {notificacao && (
-        <div style={{ position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 12000, backgroundColor: notificacao.tipo === 'sucesso' ? '#10b981' : '#ef4444', color: 'white', padding: '12px 24px', borderRadius: '50px', display: 'flex', gap: '10px', alignItems: 'center', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-          <CheckCircle2 style={{ flexShrink: 0 }} /> <span style={{ fontSize: '14px', fontWeight: 'bold' }}>{notificacao.msg}</span>
+        <div style={{ position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 12000, backgroundColor: notificacao.tipo === 'sucesso' ? '#10b981' : '#ef4444', color: 'white', padding: '12px 24px', borderRadius: '50px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'bold' }}>
+          <CheckCircle2 size={20} /> <span style={{ fontSize: '14px' }}>{notificacao.msg}</span>
         </div>
       )}
 
-      {/* HEADER PRINCIPAL */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', marginTop: '10px', flexWrap: 'wrap', gap: '15px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Users size={28} color="var(--cor-primaria)" />
-          <h1 style={{ fontSize: '22px', color: '#1e293b', margin: 0 }}>Equipe e Qualificação</h1>
-        </div>
-        
-        {/* ✨ OS DOIS BOTÕES LADO A LADO */}
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <Button onClick={() => setModalDSS(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0284c7' }}>
-            <ShieldCheck size={20} /> Diálogos de Segurança (DSS)
-          </Button>
-          <Button onClick={() => setModalTreinamento(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#8b5cf6' }}>
-            <GraduationCap size={20} /> Módulo de Treinamentos
-          </Button>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', marginTop: '10px' }}>
+        <Briefcase size={28} color="#0ea5e9" />
+        <h1 style={{ fontSize: '22px', color: '#1e293b', margin: 0 }}>Departamento Pessoal (RH)</h1>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+        
+        {/* COMPONENTE ISOLADO DE CADASTRO */}
         <FormularioCadastro setores={setores} avisar={avisar} />
 
-        {/* LISTA DE FUNCIONÁRIOS */}
+        {/* LISTA DE FUNCIONÁRIOS (COM GESTÃO DE DESLIGADOS) */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: 'var(--sombra-card)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ fontSize: '16px', margin: 0 }}>Equipe Operacional</h3>
+            <h3 style={{ fontSize: '16px', margin: 0 }}>Gestão de Colaboradores</h3>
           </div>
 
           <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-            <button onClick={() => setFiltroStatus('ativo')} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', backgroundColor: filtroStatus === 'ativo' ? '#3b82f6' : '#f1f5f9', color: filtroStatus === 'ativo' ? 'white' : '#64748b' }}>Ativos</button>
-            <button onClick={() => setFiltroStatus('desligado')} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', backgroundColor: filtroStatus === 'desligado' ? '#ef4444' : '#f1f5f9', color: filtroStatus === 'desligado' ? 'white' : '#64748b' }}>Desligados</button>
+            <button onClick={() => setFiltroStatus('ativo')} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', backgroundColor: filtroStatus === 'ativo' ? '#0ea5e9' : '#f1f5f9', color: filtroStatus === 'ativo' ? 'white' : '#64748b' }}>Ativos</button>
+            <button onClick={() => setFiltroStatus('desligado')} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', backgroundColor: filtroStatus === 'desligado' ? '#ef4444' : '#f1f5f9', color: filtroStatus === 'desligado' ? 'white' : '#64748b' }}>Desligados / Inativos</button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -111,8 +91,8 @@ export default function Funcionarios() {
                       <span style={{ fontSize: '11px', backgroundColor: func.status === 'desligado' ? '#fecaca' : '#f1f5f9', padding: '4px 6px', borderRadius: '4px', color: func.status === 'desligado' ? '#dc2626' : '#64748b', fontWeight: 'bold' }}>MAT: {func.matricula}</span>
                     </div>
                   </div>
-                  <Button onClick={() => setFichaAberta(func)} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
-                    Ficha
+                  <Button onClick={() => setFichaAberta(func)} style={{ padding: '8px 12px', fontSize: '13px', backgroundColor: '#f0f9ff', color: '#0ea5e9', border: '1px solid #bae6fd' }}>
+                    <FileText size={16} style={{marginRight: '5px'}} /> Ficha Completa
                   </Button>
                 </div>
               ))
@@ -121,30 +101,15 @@ export default function Funcionarios() {
         </div>
       </div>
 
+      {/* COMPONENTE ISOLADO DA FICHA / HISTÓRICO */}
       <ModalFicha 
         funcionarioAberta={fichaAberta} 
         onClose={() => setFichaAberta(null)} 
         estoque={estoque} 
         treinamentosGlobais={treinamentosGlobais} 
-        dssGlobais={dssGlobais} // ✨ Enviando os dados de DSS para a ficha
+        dssGlobais={dssGlobais}
         avisar={avisar} 
       />
-
-      <ModalTreinamentos 
-        aberto={modalTreinamento} 
-        onClose={() => setModalTreinamento(false)} 
-        funcionarios={funcionarios} 
-        treinamentosGlobais={treinamentosGlobais}
-        avisar={avisar}
-      />
-
-      <ModalDSS 
-        aberto={modalDSS} 
-        onClose={() => setModalDSS(false)} 
-        funcionarios={funcionarios} 
-        avisar={avisar} 
-      />
-
     </div>
   );
 }

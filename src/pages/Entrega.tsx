@@ -70,9 +70,12 @@ export default function Entrega() {
   useEffect(() => {
     if (!setorAtivo) return;
 
-    // Escuta Funcionários do Setor
+   // Escuta Funcionários do Setor
     const unsubFunc = onSnapshot(query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo)), (snapFunc) => {
-      const funcs = snapFunc.docs.map(d => ({ id: d.id, ...d.data(), tipo: 'funcionario' }));
+      // ✨ MÁGICA AQUI: O .filter() ignora totalmente qualquer um que esteja desligado
+      const funcs = snapFunc.docs
+        .map(d => ({ id: d.id, ...d.data(), tipo: 'funcionario' }))
+        .filter((f: any) => f.status !== 'desligado'); 
       
       // Escuta Sócios (Universal)
       onSnapshot(query(collection(db, 'usuarios'), where('nivel', '==', 'socio')), (snapSocios) => {

@@ -13,6 +13,7 @@ import Entrega from './pages/Entrega';
 import Estoque from './pages/Estoque';
 import PedidosCompra from './pages/PedidosCompra';
 import Advertencias from './pages/Advertencias';
+import GestaoAcessos from './pages/GestaoAcessos';
 
 
 // === NOVA PÁGINA DE ASSINATURA PÚBLICA ===
@@ -37,7 +38,7 @@ export default function App() {
           <Route path="/estoque" element={<Estoque />} />
           <Route path="/pedidos-compra" element={<PedidosCompra />} />
           <Route path="/advertencias" element={<Advertencias />} />
-          
+          <Route path="/gestao-acessos" element={<GestaoAcessos />} />
         </Route>
 
       </Routes>
