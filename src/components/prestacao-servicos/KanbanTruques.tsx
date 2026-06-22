@@ -4,9 +4,9 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, upd
 import { db } from '../../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../../assets/LogoLimpa.webp'; // Verifique o caminho da logo
+import logoCarvalho from '../../assets/LogoLimpa.webp'; 
 
-import { TrainFront, ArrowRight, Check, Printer, Paintbrush } from 'lucide-react';
+import { TrainFront, ArrowRight, Check, Printer, Paintbrush, Undo2 } from 'lucide-react';
 import Button from '../ui/Button';
 
 interface Props { setorAtivo: string; funcionarios: any[]; avisar: (msg: string, tipo?: 'sucesso'|'erro') => void; }
@@ -63,7 +63,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     } catch (e) { avisar("Erro ao avançar.", "erro"); }
   };
 
-  // ✨ NOVA FUNÇÃO: Avançar para Pintura
   const avancarParaPintura = async (id: string) => {
     try { 
       await updateDoc(doc(db, 'truques_producao', id), { status: 'pronto_pintura' }); 
@@ -71,7 +70,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     } catch (e) { avisar("Erro ao enviar para pintura.", "erro"); }
   };
 
-  // Atualizada para mover da Pintura para Concluído
   const marcarComoPintado = async (id: string) => {
     try { 
       await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() }); 
@@ -79,22 +77,27 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     } catch (e) { avisar("Erro.", "erro"); }
   };
 
+  // ✨ NOVA FUNÇÃO: Voltar Etapa (Desfazer)
+  const voltarEtapa = async (id: string, statusAnterior: string) => {
+    try {
+      await updateDoc(doc(db, 'truques_producao', id), { status: statusAnterior });
+      avisar("Peça retornada para a etapa anterior.");
+    } catch (e) {
+      avisar("Erro ao retornar peça.", "erro");
+    }
+  };
+
   const aplicarRecontagem = () => {
     const valor = parseInt(novoValorGalpao, 10);
     const todosPintados = truques.filter(t => t.status === 'pintado');
     
-    if (isNaN(valor) || valor < 0) {
-      return avisar("Insira um valor válido para a recontagem.", "erro");
-    }
-    if (valor > todosPintados.length) {
-      return avisar("O novo valor não pode ser maior que o total real do banco.", "erro");
-    }
+    if (isNaN(valor) || valor < 0) return avisar("Insira um valor válido para a recontagem.", "erro");
+    if (valor > todosPintados.length) return avisar("O novo valor não pode ser maior que o total real do banco.", "erro");
 
     const quantidadeRemover = todosPintados.length - valor;
     
     if (quantidadeRemover === 0) {
-      setIdsOcultos([]);
-      setNovoValorGalpao('');
+      setIdsOcultos([]); setNovoValorGalpao('');
       avisar("Contagem restaurada para o valor original.");
       return;
     }
@@ -102,8 +105,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     const embaralhados = [...todosPintados].sort(() => 0.5 - Math.random());
     const paraOcultar = embaralhados.slice(0, quantidadeRemover).map(t => t.id);
 
-    setIdsOcultos(paraOcultar);
-    setNovoValorGalpao('');
+    setIdsOcultos(paraOcultar); setNovoValorGalpao('');
     avisar(`Contagem ajustada. ${quantidadeRemover} truques removidos visualmente.`);
   };
 
@@ -118,7 +120,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     docPdf.setFontSize(11); docPdf.setTextColor(0, 0, 0); docPdf.text("RESUMO DO PÁTIO / GALPÃO", 15, 35);
     docPdf.setFontSize(10); docPdf.setFont("helvetica", "normal");
     
-    // ✨ Atualizado no PDF
     docPdf.text(`1. Lavagem e Jateamento: ${truquesAguardandoJateamento.length} peça(s)`, 15, 42);
     docPdf.text(`2. Partículas Magnéticas: ${truquesAguardandoPM.length} peça(s)`, 15, 48);
     docPdf.text(`3. Setor de Pintura: ${truquesAguardandoPintura.length} peça(s)`, 15, 54);
@@ -138,7 +139,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     docPdf.save(`Relatorio_Truques_${dataAtual.replace(/\//g, '-')}.pdf`);
   };
 
-  // ✨ CONSTANTES ATUALIZADAS PARA O NOVO FLUXO
   const truquesAguardandoJateamento = truques.filter(t => t.status === 'pronto_jateamento');
   const truquesAguardandoPM = truques.filter(t => t.status === 'analisado_pm');
   const truquesAguardandoPintura = truques.filter(t => t.status === 'pronto_pintura');
@@ -205,15 +205,21 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
             {truquesAguardandoPM.map(t => (
               <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #fde047', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong>{t.identificacao}</strong>
-                <Button onClick={() => avancarParaPintura(t.id)} style={{ backgroundColor: '#8b5cf6', padding: '8px 12px' }}>
-                  Ir p/ Pintura <ArrowRight size={14}/>
-                </Button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {/* Botão de Desfazer */}
+                  <Button onClick={() => voltarEtapa(t.id, 'pronto_jateamento')} style={{ backgroundColor: '#f1f5f9', color: '#64748b', padding: '8px 10px' }} title="Voltar para Lavagem">
+                    <Undo2 size={16}/>
+                  </Button>
+                  <Button onClick={() => avancarParaPintura(t.id)} style={{ backgroundColor: '#8b5cf6', padding: '8px 12px' }}>
+                    Ir p/ Pintura <ArrowRight size={14}/>
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* ✨ 3. NOVA COLUNA: Pintura */}
+        {/* 3. Pintura */}
         <div style={{ backgroundColor: '#eff6ff', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Paintbrush size={18} /> 3. Pintura ({truquesAguardandoPintura.length})
@@ -222,9 +228,15 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
             {truquesAguardandoPintura.map(t => (
               <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong>{t.identificacao}</strong>
-                <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px 12px' }}>
-                  Concluir <Check size={14}/>
-                </Button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {/* Botão de Desfazer */}
+                  <Button onClick={() => voltarEtapa(t.id, 'analisado_pm')} style={{ backgroundColor: '#f1f5f9', color: '#64748b', padding: '8px 10px' }} title="Voltar para Partículas Magnéticas">
+                    <Undo2 size={16}/>
+                  </Button>
+                  <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px 12px' }}>
+                    Concluir <Check size={14}/>
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -235,22 +247,22 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h4 style={{ margin: 0, color: '#166534' }}>4. Galpão ({truquesConcluidos.length})</h4>
             <div style={{ display: 'flex', gap: '5px' }}>
-              <input 
-                type="number" 
-                value={novoValorGalpao} 
-                onChange={e => setNovoValorGalpao(e.target.value)} 
-                placeholder="Qtd atual" 
-                style={{ width: '70px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #86efac', outline: 'none', fontSize: '13px' }} 
-              />
+              <input type="number" value={novoValorGalpao} onChange={e => setNovoValorGalpao(e.target.value)} placeholder="Qtd atual" style={{ width: '70px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #86efac', outline: 'none', fontSize: '13px' }} />
               <Button onClick={aplicarRecontagem} style={{ padding: '4px 10px', fontSize: '12px', backgroundColor: '#166534' }}>Ajustar</Button>
             </div>
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
             {truquesConcluidos.map(t => (
-              <div key={t.id} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between' }}>
+              <div key={t.id} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 'bold', color: '#15803d' }}>{t.identificacao}</span>
-                <Check size={16} color="#15803d" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {/* Botão de Desfazer */}
+                  <Button onClick={() => voltarEtapa(t.id, 'pronto_pintura')} style={{ backgroundColor: 'transparent', color: '#15803d', padding: '4px', border: 'none' }} title="Desfazer (Voltar para Pintura)">
+                    <Undo2 size={16}/>
+                  </Button>
+                  <Check size={16} color="#15803d" />
+                </div>
               </div>
             ))}
           </div>
