@@ -4,11 +4,10 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, upd
 import { db } from '../../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../../assets/LogoLimpa.webp';
+import logoCarvalho from '../../assets/logopdf.png'; 
 
-import { TrainFront, ArrowRight, Check, Printer } from 'lucide-react';
+import { TrainFront, ArrowRight, Check, Printer, Paintbrush, Undo2 } from 'lucide-react';
 import Button from '../ui/Button';
-import Input from '../ui/Input';
 
 interface Props { setorAtivo: string; funcionarios: any[]; avisar: (msg: string, tipo?: 'sucesso'|'erro') => void; }
 
@@ -18,6 +17,9 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   const [colaboradorJateouId, setColaboradorJateouId] = useState('');
   const [jaPintado, setJaPintado] = useState(false);
   const [operadoresKanban, setOperadoresKanban] = useState<Record<string, string>>({});
+  
+  const [idsOcultos, setIdsOcultos] = useState<string[]>([]);
+  const [novoValorGalpao, setNovoValorGalpao] = useState('');
 
   useEffect(() => {
     if (!setorAtivo) return;
@@ -57,35 +59,79 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     }
     try {
       await updateDoc(doc(db, 'truques_producao', t.id), { status: 'analisado_pm', dataPM: serverTimestamp(), colaboradorJateouId: colabId, colaboradorJateouNome: colabNome });
-      avisar("Liberado para Pintura.");
+      avisar("Avançado para Partículas Magnéticas.");
     } catch (e) { avisar("Erro ao avançar.", "erro"); }
   };
 
+  const avancarParaPintura = async (id: string) => {
+    try { 
+      await updateDoc(doc(db, 'truques_producao', id), { status: 'pronto_pintura' }); 
+      avisar("Liberado para Pintura."); 
+    } catch (e) { avisar("Erro ao enviar para pintura.", "erro"); }
+  };
+
   const marcarComoPintado = async (id: string) => {
-    try { await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() }); avisar("Pintura Concluída."); } 
-    catch (e) { avisar("Erro.", "erro"); }
+    try { 
+      await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() }); 
+      avisar("Pintura Concluída e enviada ao Galpão."); 
+    } catch (e) { avisar("Erro.", "erro"); }
+  };
+
+  // ✨ NOVA FUNÇÃO: Voltar Etapa (Desfazer)
+  const voltarEtapa = async (id: string, statusAnterior: string) => {
+    try {
+      await updateDoc(doc(db, 'truques_producao', id), { status: statusAnterior });
+      avisar("Peça retornada para a etapa anterior.");
+    } catch (e) {
+      avisar("Erro ao retornar peça.", "erro");
+    }
+  };
+
+  const aplicarRecontagem = () => {
+    const valor = parseInt(novoValorGalpao, 10);
+    const todosPintados = truques.filter(t => t.status === 'pintado');
+    
+    if (isNaN(valor) || valor < 0) return avisar("Insira um valor válido para a recontagem.", "erro");
+    if (valor > todosPintados.length) return avisar("O novo valor não pode ser maior que o total real do banco.", "erro");
+
+    const quantidadeRemover = todosPintados.length - valor;
+    
+    if (quantidadeRemover === 0) {
+      setIdsOcultos([]); setNovoValorGalpao('');
+      avisar("Contagem restaurada para o valor original.");
+      return;
+    }
+
+    const embaralhados = [...todosPintados].sort(() => 0.5 - Math.random());
+    const paraOcultar = embaralhados.slice(0, quantidadeRemover).map(t => t.id);
+
+    setIdsOcultos(paraOcultar); setNovoValorGalpao('');
+    avisar(`Contagem ajustada. ${quantidadeRemover} truques removidos visualmente.`);
   };
 
   const gerarRelatorioTruques = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const dataAtual = new Date().toLocaleDateString('pt-BR');
-    try { docPdf.addImage(logoCarvalho, 'WEBP', 15, 10, 40, 14); } catch(e){}
+    try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 35, 14); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(16); docPdf.setTextColor(30, 41, 59);
-    docPdf.text("RELATÓRIO DE PRODUÇÃO - TRUQUES", 105, 18, { align: 'center' });
+    docPdf.text("RELATÓRIO DE PRODUÇÃO - TRUQUES", 105, 16, { align: 'center' });
     docPdf.setFontSize(10); docPdf.setTextColor(100, 100, 100); docPdf.text(`Emissão: ${dataAtual}`, 195, 20, { align: 'right' });
     docPdf.setLineWidth(0.5); docPdf.line(15, 26, 195, 26);
     docPdf.setFontSize(11); docPdf.setTextColor(0, 0, 0); docPdf.text("RESUMO DO PÁTIO / GALPÃO", 15, 35);
     docPdf.setFontSize(10); docPdf.setFont("helvetica", "normal");
+    
     docPdf.text(`1. Lavagem e Jateamento: ${truquesAguardandoJateamento.length} peça(s)`, 15, 42);
-    docPdf.text(`2. Analisados c/ Partículas Magnéticas (Prontos p/ Pintar): ${truquesAguardandoPintura.length} peça(s)`, 15, 48);
-    docPdf.text(`3. Pintura Concluída: ${truquesConcluidos.length} peça(s)`, 15, 54);
+    docPdf.text(`2. Partículas Magnéticas: ${truquesAguardandoPM.length} peça(s)`, 15, 48);
+    docPdf.text(`3. Setor de Pintura: ${truquesAguardandoPintura.length} peça(s)`, 15, 54);
+    docPdf.text(`4. Pintura Concluída (Galpão): ${truquesConcluidos.length} peça(s)`, 15, 60);
 
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
     renderTable(docPdf, {
-      startY: 65, head: [["PLAQUETA", "STATUS ATUAL", "COLABORADOR (JAT)"]],
+      startY: 68, head: [["PLAQUETA", "STATUS ATUAL", "COLABORADOR (JAT)"]],
       body: [
         ...truquesAguardandoJateamento.map(t => [t.identificacao, 'Lavagem / Jateamento', t.colaboradorJateouNome]),
-        ...truquesAguardandoPintura.map(t => [t.identificacao, 'Aguardando Pintura', t.colaboradorJateouNome]),
+        ...truquesAguardandoPM.map(t => [t.identificacao, 'Partículas Magnéticas', t.colaboradorJateouNome]),
+        ...truquesAguardandoPintura.map(t => [t.identificacao, 'Pintura', t.colaboradorJateouNome]),
         ...truquesConcluidos.map(t => [t.identificacao, 'Concluído (Galpão)', t.colaboradorJateouNome])
       ],
       theme: 'grid', styles: { fontSize: 9, cellPadding: 4 }
@@ -94,8 +140,9 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   };
 
   const truquesAguardandoJateamento = truques.filter(t => t.status === 'pronto_jateamento');
-  const truquesAguardandoPintura = truques.filter(t => t.status === 'analisado_pm');
-  const truquesConcluidos = truques.filter(t => t.status === 'pintado');
+  const truquesAguardandoPM = truques.filter(t => t.status === 'analisado_pm');
+  const truquesAguardandoPintura = truques.filter(t => t.status === 'pronto_pintura');
+  const truquesConcluidos = truques.filter(t => t.status === 'pintado' && !idsOcultos.includes(t.id));
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
@@ -127,8 +174,10 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
         </form>
       </div>
 
-      {/* Coluna 2: Kanban */}
+      {/* Coluna 2: Kanban Completo */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        
+        {/* 1. Jateamento */}
         <div style={{ backgroundColor: '#f1f5f9', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#334155' }}>1. Lavagem / Jateamento ({truquesAguardandoJateamento.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
@@ -141,34 +190,84 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
                     {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                   </select>
                 )}
-                <Button onClick={() => avancarParaPM(t)} style={{ backgroundColor: '#f59e0b', marginTop: '10px', width: '100%' }}>Avançar p/ Partículas Magnéticas<ArrowRight size={14}/></Button>
+                <Button onClick={() => avancarParaPM(t)} style={{ backgroundColor: '#f59e0b', marginTop: '10px', width: '100%' }}>
+                  Avançar p/ Análise (PM) <ArrowRight size={14}/>
+                </Button>
               </div>
             ))}
           </div>
         </div>
         
+        {/* 2. Partículas Magnéticas */}
         <div style={{ backgroundColor: '#fffbeb', padding: '20px', borderRadius: '16px' }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#b45309' }}>2. Análise c/ Partículas Magnéticas ({truquesAguardandoPintura.length})</h4>
+          <h4 style={{ margin: '0 0 15px 0', color: '#b45309' }}>2. Partículas Magnéticas (PM) ({truquesAguardandoPM.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
-            {truquesAguardandoPintura.map(t => (
-              <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #fde047', display: 'flex', justifyContent: 'space-between' }}>
+            {truquesAguardandoPM.map(t => (
+              <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #fde047', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong>{t.identificacao}</strong>
-                <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px' }}>Concluir <Check size={14}/></Button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {/* Botão de Desfazer */}
+                  <Button onClick={() => voltarEtapa(t.id, 'pronto_jateamento')} style={{ backgroundColor: '#f1f5f9', color: '#64748b', padding: '8px 10px' }} title="Voltar para Lavagem">
+                    <Undo2 size={16}/>
+                  </Button>
+                  <Button onClick={() => avancarParaPintura(t.id)} style={{ backgroundColor: '#8b5cf6', padding: '8px 12px' }}>
+                    Ir p/ Pintura <ArrowRight size={14}/>
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#f0fdf4', padding: '20px', borderRadius: '16px' }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#166534' }}>3. Galpão ({truquesConcluidos.length})</h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-            {truquesConcluidos.map(t => (
-              <div key={t.id} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>{t.identificacao}</span>
+        {/* 3. Pintura */}
+        <div style={{ backgroundColor: '#eff6ff', padding: '20px', borderRadius: '16px' }}>
+          <h4 style={{ margin: '0 0 15px 0', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Paintbrush size={18} /> 3. Pintura ({truquesAguardandoPintura.length})
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
+            {truquesAguardandoPintura.map(t => (
+              <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>{t.identificacao}</strong>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {/* Botão de Desfazer */}
+                  <Button onClick={() => voltarEtapa(t.id, 'analisado_pm')} style={{ backgroundColor: '#f1f5f9', color: '#64748b', padding: '8px 10px' }} title="Voltar para Partículas Magnéticas">
+                    <Undo2 size={16}/>
+                  </Button>
+                  <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px 12px' }}>
+                    Concluir <Check size={14}/>
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
         </div>
+
+        {/* 4. Galpão (Concluído) */}
+        <div style={{ backgroundColor: '#f0fdf4', padding: '20px', borderRadius: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h4 style={{ margin: 0, color: '#166534' }}>4. Galpão ({truquesConcluidos.length})</h4>
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <input type="number" value={novoValorGalpao} onChange={e => setNovoValorGalpao(e.target.value)} placeholder="Qtd atual" style={{ width: '70px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #86efac', outline: 'none', fontSize: '13px' }} />
+              <Button onClick={aplicarRecontagem} style={{ padding: '4px 10px', fontSize: '12px', backgroundColor: '#166534' }}>Ajustar</Button>
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+            {truquesConcluidos.map(t => (
+              <div key={t.id} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 'bold', color: '#15803d' }}>{t.identificacao}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {/* Botão de Desfazer */}
+                  <Button onClick={() => voltarEtapa(t.id, 'pronto_pintura')} style={{ backgroundColor: 'transparent', color: '#15803d', padding: '4px', border: 'none' }} title="Desfazer (Voltar para Pintura)">
+                    <Undo2 size={16}/>
+                  </Button>
+                  <Check size={16} color="#15803d" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
       </div>
     </div>
   );
