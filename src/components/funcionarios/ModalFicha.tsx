@@ -2,16 +2,19 @@
 import { useState, useEffect } from 'react';
 import { doc, updateDoc, collection, query, where, onSnapshot, Timestamp, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { X, UserPlus, AlertTriangle, Lock, Edit3, Shirt, UserMinus, UserCheck, Archive, History, Plus, GraduationCap, ShieldCheck } from 'lucide-react';
+import { X, UserPlus, AlertTriangle, Lock, Edit3, Shirt, UserMinus, UserCheck, Archive, History, Plus, GraduationCap, ShieldCheck, FileSignature } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+
+// ✨ IMPORTAÇÃO DO NOVO MODAL DE TERMO DE COMPROMISSO
+import ModalTermo from './ModalTermo';
 
 interface Props {
   funcionarioAberta: any;
   onClose: () => void;
   estoque: any[];
   treinamentosGlobais: any[];
-  dssGlobais: any[]; // ✨ Recebendo o Histórico de DSS
+  dssGlobais: any[];
   avisar: (msg: string, tipo?: 'sucesso' | 'erro') => void;
 }
 
@@ -31,6 +34,9 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
   const [editandoRestrito, setEditandoRestrito] = useState(false);
   const [cpfEdit, setCpfEdit] = useState('');
   const [rgEdit, setRgEdit] = useState('');
+
+  // ✨ CONTROLE DO MODAL DE TERMO
+  const [modalTermoAberto, setModalTermoAberto] = useState(false);
 
   useEffect(() => { setFichaAberta(funcionarioAberta); }, [funcionarioAberta]);
 
@@ -160,6 +166,16 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
               )}
             </div>
 
+            {/* ✨ AQUI ESTÁ O BOTÃO DE DOCUMENTAÇÃO FORMAL (TERMO) */}
+            <div style={{ marginBottom: '25px', paddingBottom: '20px', borderBottom: '1px solid #e2e8f0' }}>
+              <h4 style={{ fontSize: '13px', color: '#1e293b', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <FileSignature size={16} color="#0ea5e9" /> DOCUMENTAÇÃO FORMAL
+              </h4>
+              <Button onClick={() => setModalTermoAberto(true)} style={{ width: '100%', height: '45px', backgroundColor: '#f0f9ff', color: '#0ea5e9', border: '1px solid #bae6fd', fontSize: '13px', fontWeight: 'bold' }}>
+                Emitir Termo de Compromisso
+              </Button>
+            </div>
+
             <h4 style={{ fontSize: '13px', color: '#1e293b', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '6px' }}><Shirt size={16} color="#3b82f6" /> MEDIDAS DO COLABORADOR</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div>
@@ -278,7 +294,7 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
                 </div>
               </div>
 
-              {/* ✨ NOVO BLOCO: DSS */}
+              {/* BLOCO: DSS */}
               <div>
                 <div style={{ borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', marginBottom: '15px' }}>
                   <h4 style={{ fontSize: '14px', color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -325,6 +341,15 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
           </div>
         </div>
       )}
+
+      {/* ✨ RENDEREZIA O MODAL DO TERMO DE COMPROMISSO AQUI DENTRO DA FICHA */}
+      <ModalTermo 
+        aberto={modalTermoAberto} 
+        funcionario={fichaAberta} 
+        onClose={() => setModalTermoAberto(false)} 
+        avisar={avisar} 
+      />
+
     </div>
   );
 }
