@@ -4,11 +4,10 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, upd
 import { db } from '../../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../../assets/LogoLimpa.webp';
+import logoCarvalho from '../../assets/LogoLimpa.webp'; // Verifique o caminho da logo
 
 import { TrainFront, ArrowRight, Check, Printer } from 'lucide-react';
 import Button from '../ui/Button';
-import Input from '../ui/Input';
 
 interface Props { setorAtivo: string; funcionarios: any[]; avisar: (msg: string, tipo?: 'sucesso'|'erro') => void; }
 
@@ -18,6 +17,10 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   const [colaboradorJateouId, setColaboradorJateouId] = useState('');
   const [jaPintado, setJaPintado] = useState(false);
   const [operadoresKanban, setOperadoresKanban] = useState<Record<string, string>>({});
+  
+  // NOVOS ESTADOS PARA A RECONTAGEM
+  const [idsOcultos, setIdsOcultos] = useState<string[]>([]);
+  const [novoValorGalpao, setNovoValorGalpao] = useState('');
 
   useEffect(() => {
     if (!setorAtivo) return;
@@ -66,6 +69,37 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     catch (e) { avisar("Erro.", "erro"); }
   };
 
+  // NOVA FUNÇÃO DE RECONTAGEM
+  const aplicarRecontagem = () => {
+    const valor = parseInt(novoValorGalpao, 10);
+    const todosPintados = truques.filter(t => t.status === 'pintado');
+    
+    if (isNaN(valor) || valor < 0) {
+      return avisar("Insira um valor válido para a recontagem.", "erro");
+    }
+    if (valor > todosPintados.length) {
+      return avisar("O novo valor não pode ser maior que o total real do banco.", "erro");
+    }
+
+    const quantidadeRemover = todosPintados.length - valor;
+    
+    // Se o valor for igual ao total real, limpa a lista de ocultos
+    if (quantidadeRemover === 0) {
+      setIdsOcultos([]);
+      setNovoValorGalpao('');
+      avisar("Contagem restaurada para o valor original.");
+      return;
+    }
+
+    // Embaralha a lista e pega N itens aleatórios para esconder
+    const embaralhados = [...todosPintados].sort(() => 0.5 - Math.random());
+    const paraOcultar = embaralhados.slice(0, quantidadeRemover).map(t => t.id);
+
+    setIdsOcultos(paraOcultar);
+    setNovoValorGalpao('');
+    avisar(`Contagem ajustada. ${quantidadeRemover} truques removidos visualmente.`);
+  };
+
   const gerarRelatorioTruques = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const dataAtual = new Date().toLocaleDateString('pt-BR');
@@ -95,7 +129,8 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
 
   const truquesAguardandoJateamento = truques.filter(t => t.status === 'pronto_jateamento');
   const truquesAguardandoPintura = truques.filter(t => t.status === 'analisado_pm');
-  const truquesConcluidos = truques.filter(t => t.status === 'pintado');
+  // Filtra os concluídos ignorando os IDs que estão na lista de ocultos
+  const truquesConcluidos = truques.filter(t => t.status === 'pintado' && !idsOcultos.includes(t.id));
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
@@ -160,7 +195,21 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
         </div>
 
         <div style={{ backgroundColor: '#f0fdf4', padding: '20px', borderRadius: '16px' }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#166534' }}>3. Galpão ({truquesConcluidos.length})</h4>
+          {/* CABEÇALHO DO GALPÃO COM O INPUT DE RECONTAGEM */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h4 style={{ margin: 0, color: '#166534' }}>3. Galpão ({truquesConcluidos.length})</h4>
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <input 
+                type="number" 
+                value={novoValorGalpao} 
+                onChange={e => setNovoValorGalpao(e.target.value)} 
+                placeholder="Qtd atual" 
+                style={{ width: '70px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #86efac', outline: 'none', fontSize: '13px' }} 
+              />
+              <Button onClick={aplicarRecontagem} style={{ padding: '4px 10px', fontSize: '12px', backgroundColor: '#166534' }}>Ajustar</Button>
+            </div>
+          </div>
+          
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
             {truquesConcluidos.map(t => (
               <div key={t.id} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between' }}>
