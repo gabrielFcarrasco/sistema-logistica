@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, upd
 import { db } from '../../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../../assets/LogoLimpa.webp'; 
+import logoCarvalho from '../../assets/logopdf.png'; 
 
 import { TrainFront, ArrowRight, Check, Printer, Paintbrush, Undo2 } from 'lucide-react';
 import Button from '../ui/Button';
@@ -112,9 +112,9 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   const gerarRelatorioTruques = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const dataAtual = new Date().toLocaleDateString('pt-BR');
-    try { docPdf.addImage(logoCarvalho, 'WEBP', 15, 10, 40, 14); } catch(e){}
+    try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 35, 14); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(16); docPdf.setTextColor(30, 41, 59);
-    docPdf.text("RELATÓRIO DE PRODUÇÃO - TRUQUES", 105, 18, { align: 'center' });
+    docPdf.text("RELATÓRIO DE PRODUÇÃO - TRUQUES", 105, 16, { align: 'center' });
     docPdf.setFontSize(10); docPdf.setTextColor(100, 100, 100); docPdf.text(`Emissão: ${dataAtual}`, 195, 20, { align: 'right' });
     docPdf.setLineWidth(0.5); docPdf.line(15, 26, 195, 26);
     docPdf.setFontSize(11); docPdf.setTextColor(0, 0, 0); docPdf.text("RESUMO DO PÁTIO / GALPÃO", 15, 35);
