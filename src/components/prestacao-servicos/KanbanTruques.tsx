@@ -6,7 +6,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import logoCarvalho from '../../assets/LogoLimpa.webp'; // Verifique o caminho da logo
 
-import { TrainFront, ArrowRight, Check, Printer } from 'lucide-react';
+import { TrainFront, ArrowRight, Check, Printer, Paintbrush } from 'lucide-react';
 import Button from '../ui/Button';
 
 interface Props { setorAtivo: string; funcionarios: any[]; avisar: (msg: string, tipo?: 'sucesso'|'erro') => void; }
@@ -18,7 +18,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   const [jaPintado, setJaPintado] = useState(false);
   const [operadoresKanban, setOperadoresKanban] = useState<Record<string, string>>({});
   
-  // NOVOS ESTADOS PARA A RECONTAGEM
   const [idsOcultos, setIdsOcultos] = useState<string[]>([]);
   const [novoValorGalpao, setNovoValorGalpao] = useState('');
 
@@ -60,16 +59,26 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     }
     try {
       await updateDoc(doc(db, 'truques_producao', t.id), { status: 'analisado_pm', dataPM: serverTimestamp(), colaboradorJateouId: colabId, colaboradorJateouNome: colabNome });
-      avisar("Liberado para Pintura.");
+      avisar("Avançado para Partículas Magnéticas.");
     } catch (e) { avisar("Erro ao avançar.", "erro"); }
   };
 
-  const marcarComoPintado = async (id: string) => {
-    try { await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() }); avisar("Pintura Concluída."); } 
-    catch (e) { avisar("Erro.", "erro"); }
+  // ✨ NOVA FUNÇÃO: Avançar para Pintura
+  const avancarParaPintura = async (id: string) => {
+    try { 
+      await updateDoc(doc(db, 'truques_producao', id), { status: 'pronto_pintura' }); 
+      avisar("Liberado para Pintura."); 
+    } catch (e) { avisar("Erro ao enviar para pintura.", "erro"); }
   };
 
-  // NOVA FUNÇÃO DE RECONTAGEM
+  // Atualizada para mover da Pintura para Concluído
+  const marcarComoPintado = async (id: string) => {
+    try { 
+      await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() }); 
+      avisar("Pintura Concluída e enviada ao Galpão."); 
+    } catch (e) { avisar("Erro.", "erro"); }
+  };
+
   const aplicarRecontagem = () => {
     const valor = parseInt(novoValorGalpao, 10);
     const todosPintados = truques.filter(t => t.status === 'pintado');
@@ -83,7 +92,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
 
     const quantidadeRemover = todosPintados.length - valor;
     
-    // Se o valor for igual ao total real, limpa a lista de ocultos
     if (quantidadeRemover === 0) {
       setIdsOcultos([]);
       setNovoValorGalpao('');
@@ -91,7 +99,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
       return;
     }
 
-    // Embaralha a lista e pega N itens aleatórios para esconder
     const embaralhados = [...todosPintados].sort(() => 0.5 - Math.random());
     const paraOcultar = embaralhados.slice(0, quantidadeRemover).map(t => t.id);
 
@@ -110,16 +117,20 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     docPdf.setLineWidth(0.5); docPdf.line(15, 26, 195, 26);
     docPdf.setFontSize(11); docPdf.setTextColor(0, 0, 0); docPdf.text("RESUMO DO PÁTIO / GALPÃO", 15, 35);
     docPdf.setFontSize(10); docPdf.setFont("helvetica", "normal");
+    
+    // ✨ Atualizado no PDF
     docPdf.text(`1. Lavagem e Jateamento: ${truquesAguardandoJateamento.length} peça(s)`, 15, 42);
-    docPdf.text(`2. Analisados c/ Partículas Magnéticas (Prontos p/ Pintar): ${truquesAguardandoPintura.length} peça(s)`, 15, 48);
-    docPdf.text(`3. Pintura Concluída: ${truquesConcluidos.length} peça(s)`, 15, 54);
+    docPdf.text(`2. Partículas Magnéticas: ${truquesAguardandoPM.length} peça(s)`, 15, 48);
+    docPdf.text(`3. Setor de Pintura: ${truquesAguardandoPintura.length} peça(s)`, 15, 54);
+    docPdf.text(`4. Pintura Concluída (Galpão): ${truquesConcluidos.length} peça(s)`, 15, 60);
 
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
     renderTable(docPdf, {
-      startY: 65, head: [["PLAQUETA", "STATUS ATUAL", "COLABORADOR (JAT)"]],
+      startY: 68, head: [["PLAQUETA", "STATUS ATUAL", "COLABORADOR (JAT)"]],
       body: [
         ...truquesAguardandoJateamento.map(t => [t.identificacao, 'Lavagem / Jateamento', t.colaboradorJateouNome]),
-        ...truquesAguardandoPintura.map(t => [t.identificacao, 'Aguardando Pintura', t.colaboradorJateouNome]),
+        ...truquesAguardandoPM.map(t => [t.identificacao, 'Partículas Magnéticas', t.colaboradorJateouNome]),
+        ...truquesAguardandoPintura.map(t => [t.identificacao, 'Pintura', t.colaboradorJateouNome]),
         ...truquesConcluidos.map(t => [t.identificacao, 'Concluído (Galpão)', t.colaboradorJateouNome])
       ],
       theme: 'grid', styles: { fontSize: 9, cellPadding: 4 }
@@ -127,9 +138,10 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     docPdf.save(`Relatorio_Truques_${dataAtual.replace(/\//g, '-')}.pdf`);
   };
 
+  // ✨ CONSTANTES ATUALIZADAS PARA O NOVO FLUXO
   const truquesAguardandoJateamento = truques.filter(t => t.status === 'pronto_jateamento');
-  const truquesAguardandoPintura = truques.filter(t => t.status === 'analisado_pm');
-  // Filtra os concluídos ignorando os IDs que estão na lista de ocultos
+  const truquesAguardandoPM = truques.filter(t => t.status === 'analisado_pm');
+  const truquesAguardandoPintura = truques.filter(t => t.status === 'pronto_pintura');
   const truquesConcluidos = truques.filter(t => t.status === 'pintado' && !idsOcultos.includes(t.id));
 
   return (
@@ -162,8 +174,10 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
         </form>
       </div>
 
-      {/* Coluna 2: Kanban */}
+      {/* Coluna 2: Kanban Completo */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        
+        {/* 1. Jateamento */}
         <div style={{ backgroundColor: '#f1f5f9', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#334155' }}>1. Lavagem / Jateamento ({truquesAguardandoJateamento.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
@@ -176,28 +190,50 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
                     {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                   </select>
                 )}
-                <Button onClick={() => avancarParaPM(t)} style={{ backgroundColor: '#f59e0b', marginTop: '10px', width: '100%' }}>Avançar p/ Partículas Magnéticas<ArrowRight size={14}/></Button>
+                <Button onClick={() => avancarParaPM(t)} style={{ backgroundColor: '#f59e0b', marginTop: '10px', width: '100%' }}>
+                  Avançar p/ Análise (PM) <ArrowRight size={14}/>
+                </Button>
               </div>
             ))}
           </div>
         </div>
         
+        {/* 2. Partículas Magnéticas */}
         <div style={{ backgroundColor: '#fffbeb', padding: '20px', borderRadius: '16px' }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#b45309' }}>2. Análise c/ Partículas Magnéticas ({truquesAguardandoPintura.length})</h4>
+          <h4 style={{ margin: '0 0 15px 0', color: '#b45309' }}>2. Partículas Magnéticas (PM) ({truquesAguardandoPM.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
-            {truquesAguardandoPintura.map(t => (
-              <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #fde047', display: 'flex', justifyContent: 'space-between' }}>
+            {truquesAguardandoPM.map(t => (
+              <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #fde047', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong>{t.identificacao}</strong>
-                <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px' }}>Concluir <Check size={14}/></Button>
+                <Button onClick={() => avancarParaPintura(t.id)} style={{ backgroundColor: '#8b5cf6', padding: '8px 12px' }}>
+                  Ir p/ Pintura <ArrowRight size={14}/>
+                </Button>
               </div>
             ))}
           </div>
         </div>
 
+        {/* ✨ 3. NOVA COLUNA: Pintura */}
+        <div style={{ backgroundColor: '#eff6ff', padding: '20px', borderRadius: '16px' }}>
+          <h4 style={{ margin: '0 0 15px 0', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Paintbrush size={18} /> 3. Pintura ({truquesAguardandoPintura.length})
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
+            {truquesAguardandoPintura.map(t => (
+              <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>{t.identificacao}</strong>
+                <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px 12px' }}>
+                  Concluir <Check size={14}/>
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 4. Galpão (Concluído) */}
         <div style={{ backgroundColor: '#f0fdf4', padding: '20px', borderRadius: '16px' }}>
-          {/* CABEÇALHO DO GALPÃO COM O INPUT DE RECONTAGEM */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h4 style={{ margin: 0, color: '#166534' }}>3. Galpão ({truquesConcluidos.length})</h4>
+            <h4 style={{ margin: 0, color: '#166534' }}>4. Galpão ({truquesConcluidos.length})</h4>
             <div style={{ display: 'flex', gap: '5px' }}>
               <input 
                 type="number" 
@@ -213,11 +249,13 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
             {truquesConcluidos.map(t => (
               <div key={t.id} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>{t.identificacao}</span>
+                <span style={{ fontWeight: 'bold', color: '#15803d' }}>{t.identificacao}</span>
+                <Check size={16} color="#15803d" />
               </div>
             ))}
           </div>
         </div>
+
       </div>
     </div>
   );
