@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, upd
 import { db } from '../../services/firebase';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoCarvalho from '../../assets/logopdf.png'; // Usando a logo padronizada para PDFs
+import logoCarvalho from '../../assets/logopdf.png'; 
 
 import { TrainFront, ArrowRight, Check, Printer, Paintbrush, Undo2, ClipboardCheck, FileDown, CalendarDays } from 'lucide-react';
 import Button from '../ui/Button';
@@ -12,7 +12,6 @@ import ModalChecklistJateamento from './ModalChecklistJateamento';
 
 interface Props { setorAtivo: string; funcionarios: any[]; avisar: (msg: string, tipo?: 'sucesso'|'erro') => void; }
 
-// Constantes com os textos extraídos do documento oficial do cliente
 const PERGUNTAS_CHECKLIST = [
   "1. Mapa de risco e EPI's implantado e disponível no local?",
   "2. Área devidamente isolada e sinalizada?",
@@ -29,18 +28,18 @@ const PERGUNTAS_CHECKLIST = [
 ];
 
 const OBRIGACOES_VIGIA = [
-  "1. Permanecer do lado externo da cabine durante toda a operação, garantindo visibilidade clara.",
-  "2. Acionar o compressor pneumático somente quando o colaborador executante estiver posicionado e sinalizar.",
-  "3. Monitorar assertivamente para todo e qualquer sinal de emergência, incluindo ruídos estranhos, vazamentos, movimento anormal.",
+  "1. Permanecer do lado externo da cabine durante a operação, garantindo visibilidade clara.",
+  "2. Acionar o compressor somente quando o executante estiver posicionado e sinalizar.",
+  "3. Monitorar assertivamente para qualquer sinal de emergência (ruídos, vazamentos).",
   "4. Atuar precisamente no desligamento do sistema em caso de anormalidade."
 ];
 
 const OBRIGACOES_EXEC = [
-  "1. Seguir procedimentos de segurança do checklist.",
+  "1. Seguir os procedimentos de segurança do checklist.",
   "2. Realizar inspeção preliminar dos equipamentos, EPI's e EPC's.",
-  "3. Reportar imediatamente qualquer anormalidade (ruídos, vazamentos, tombamento).",
+  "3. Reportar imediatamente qualquer anormalidade.",
   "4. Utilizar todos os EPI's e EPC's designados.",
-  "5. Após a execução, realizar higienização e organização do ambiente.",
+  "5. Após execução, realizar higienização e organização do ambiente.",
   "6. Destinar adequadamente os resíduos."
 ];
 
@@ -54,7 +53,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   const [idsOcultos, setIdsOcultos] = useState<string[]>([]);
   const [novoValorGalpao, setNovoValorGalpao] = useState('');
 
-  // ESTADOS DO CHECKLIST
   const [modalChecklistAberto, setModalChecklistAberto] = useState(false);
   const [truqueParaChecklist, setTruqueParaChecklist] = useState<any>(null);
 
@@ -115,38 +113,36 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   };
 
   // ============================================================================
-  // 📄 LÓGICA DE GERAÇÃO DO PDF DO CHECKLIST DE JATEAMENTO
+  // ✨ NOVO: GERADOR DO CHECKLIST EM PAISAGEM (HORIZONTAL) - 2 COLUNAS
   // ============================================================================
-  const renderizarPaginaChecklist = (docPdf: jsPDF, truque: any) => {
+  const renderizarPaginaChecklistHorizontal = (docPdf: jsPDF, truque: any) => {
     const chk = truque.checklistJateamento;
     if (!chk) return;
 
     const dataPreenchimento = chk.dataPreenchimento?.toDate().toLocaleDateString('pt-BR') || "Data Indisponível";
-    let y = 10;
 
-    // Cabeçalho e Logo
-    try { docPdf.addImage(logoCarvalho, 'PNG', 15, y, 40, 14); } catch(e){}
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(14); docPdf.setTextColor(30, 41, 59);
-    docPdf.text("CHECKLIST DE SEGURANÇA JATEAMENTO", 105, y + 6, { align: 'center' });
-    docPdf.setFontSize(10);
-    docPdf.text("DA ARANHA DO TRUQUE TRENS 59500", 105, y + 12, { align: 'center' });
+    // --- LADO ESQUERDO: CABEÇALHO, OBJETIVO E TABELA (X de 10 a 145) ---
+    try { docPdf.addImage(logoCarvalho, 'PNG', 10, 10, 35, 12); } catch(e){}
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(12); docPdf.setTextColor(30, 41, 59);
+    docPdf.text("CHECKLIST DE SEGURANÇA JATEAMENTO", 77.5, 15, { align: 'center' });
+    docPdf.setFontSize(9);
+    docPdf.text("DA ARANHA DO TRUQUE TRENS 59500", 77.5, 20, { align: 'center' });
     
-    docPdf.setFontSize(9); docPdf.setFont("helvetica", "normal");
-    docPdf.text(`Data: ${dataPreenchimento} | Plaqueta: ${truque.identificacao}`, 195, y + 12, { align: 'right' });
-    y += 18;
+    docPdf.setFontSize(8); docPdf.setFont("helvetica", "bold");
+    docPdf.text(`Data: ${dataPreenchimento} | Plaqueta: ${truque.identificacao}`, 145, 20, { align: 'right' });
     
-    docPdf.setLineWidth(0.5); docPdf.line(15, y, 195, y); y += 6;
-
-    // Objetivo
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(10);
-    docPdf.text("OBJETIVO", 15, y); y += 4;
+    docPdf.setLineWidth(0.4); docPdf.setDrawColor(30, 41, 59);
+    docPdf.line(10, 24, 145, 24); 
+    
+    let yEsq = 29;
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
+    docPdf.text("OBJETIVO", 10, yEsq); yEsq += 4;
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
     const objText = "Estabelecer os procedimentos operacionais seguros para a execução da atividade de jateamento da aranha do truque de trem utilizando poeira metálica para remoção de tinta, visando garantir a integridade física dos trabalhadores, a preservação do meio ambiente e a integridade dos equipamentos.";
-    const splitObj = docPdf.splitTextToSize(objText, 180);
-    docPdf.text(splitObj, 15, y);
-    y += (splitObj.length * 4) + 4;
+    const splitObj = docPdf.splitTextToSize(objText, 135);
+    docPdf.text(splitObj, 10, yEsq);
+    yEsq += (splitObj.length * 3.5) + 4;
 
-    // Itens de Verificação (Tabela)
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
     const bodyRespostas = PERGUNTAS_CHECKLIST.map((p, i) => {
       const resp = chk.respostas[i];
@@ -154,88 +150,87 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     });
 
     renderTable(docPdf, {
-      startY: y,
+      startY: yEsq,
+      margin: { left: 10 },
+      tableWidth: 135,
       head: [["ITENS DE VERIFICAÇÃO", "SIM", "NÃO"]],
       body: bodyRespostas,
       theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 2 },
-      columnStyles: { 0: { cellWidth: 140 }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 20, halign: 'center' } },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 0: { cellWidth: 105 }, 1: { cellWidth: 15, halign: 'center' }, 2: { cellWidth: 15, halign: 'center' } },
       headStyles: { fillColor: [30, 41, 59] }
     });
 
-    y = (docPdf as any).lastAutoTable.finalY + 8;
+    // --- LINHA DIVISÓRIA CENTRAL ---
+    docPdf.setDrawColor(200, 200, 200);
+    docPdf.setLineWidth(0.2);
+    docPdf.line(150, 10, 150, 200);
 
-    // Função auxiliar para evitar cortes na página
-    const verificarEspaco = (espacoNecessario: number) => {
-      if (y + espacoNecessario > 280) { docPdf.addPage(); y = 15; }
-    };
-
-    // Obrigações (2 Colunas para poupar espaço)
-    verificarEspaco(40);
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("OBRIGAÇÕES DO VIGIA", 15, y);
-    docPdf.text("OBRIGAÇÕES DO EXECUTANTE", 105, y);
-    y += 5;
+    // --- LADO DIREITO: REGRAS E ASSINATURAS (X de 155 a 287) ---
+    let yDir = 15;
     
-    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(7.5);
-    let yVigia = y;
+    docPdf.setTextColor(30, 41, 59);
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
+    docPdf.text("OBRIGAÇÕES DO VIGIA", 155, yDir);
+    docPdf.text("OBRIGAÇÕES DO EXECUTANTE", 220, yDir);
+    yDir += 4;
+    
+    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
+    let yVigia = yDir;
     OBRIGACOES_VIGIA.forEach(txt => {
-      const linhas = docPdf.splitTextToSize(txt, 85);
-      docPdf.text(linhas, 15, yVigia); yVigia += linhas.length * 3.5;
+      const linhas = docPdf.splitTextToSize(txt, 60);
+      docPdf.text(linhas, 155, yVigia); yVigia += linhas.length * 3.5;
     });
 
-    let yExec = y;
+    let yExec = yDir;
     OBRIGACOES_EXEC.forEach(txt => {
-      const linhas = docPdf.splitTextToSize(txt, 85);
-      docPdf.text(linhas, 105, yExec); yExec += linhas.length * 3.5;
+      const linhas = docPdf.splitTextToSize(txt, 60);
+      docPdf.text(linhas, 220, yExec); yExec += linhas.length * 3.5;
     });
 
-    y = Math.max(yVigia, yExec) + 8;
-
-    // Medidas Preventivas e EPIs
-    verificarEspaco(45);
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("MEDIDAS PREVENTIVAS GERAIS", 15, y); y += 5;
-    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(7.5);
-    const medidasText = "1. Exaustão | 2. Distanciamento | 3. Fechamento de cabine | 4. Monitoramento contínuo | 5. Exames específicos | 6. EPIs | 7. Inspeções diárias | 8. Evitar improvisos | 9. Uso de válvulas | 10. Sinalização | 11. Descansos | 12. Armazenamento seguro | 13. Verificação de abrasivo.";
-    const splitMedidas = docPdf.splitTextToSize(medidasText, 180);
-    docPdf.text(splitMedidas, 15, y); y += (splitMedidas.length * 4) + 6;
+    yDir = Math.max(yVigia, yExec) + 6;
 
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("EPI's E EPC's OBRIGATÓRIOS", 15, y); y += 5;
-    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(7.5);
-    const episText = "Capacete de jatista (ar mandado) | Jaqueta couro/raspa | Calça couro/raspa | Luvas cano longo | Proteção pés | Exaustão | Compressor e Filtro | Manômetros independentes.";
-    const splitEpis = docPdf.splitTextToSize(episText, 180);
-    docPdf.text(splitEpis, 15, y); y += (splitEpis.length * 4) + 15;
+    docPdf.text("MEDIDAS PREVENTIVAS GERAIS", 155, yDir); yDir += 4;
+    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
+    const medidasText = "1. Exaustão | 2. Distanciamento seguro | 3. Fechamento de cabine | 4. Monitoramento contínuo | 5. Exames específicos para poeiras | 6. EPIs | 7. Inspeções diárias | 8. Evitar improvisos | 9. Uso de válvulas | 10. Sinalização restrita | 11. Descansos | 12. Armazenamento seguro | 13. Verificação de abrasivo.";
+    const splitMedidas = docPdf.splitTextToSize(medidasText, 132);
+    docPdf.text(splitMedidas, 155, yDir); yDir += (splitMedidas.length * 3.5) + 6;
 
-    // Assinaturas
-    verificarEspaco(40);
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
+    docPdf.text("EPI's E EPC's OBRIGATÓRIOS", 155, yDir); yDir += 4;
+    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
+    const episText = "Capacete de jatista (ar mandado) | Jaqueta couro/raspa | Calça couro/raspa | Luvas cano longo | Proteção pés | Sistema de Exaustão | Compressor e Filtro | Manômetros independentes.";
+    const splitEpis = docPdf.splitTextToSize(episText, 132);
+    docPdf.text(splitEpis, 155, yDir); yDir += (splitEpis.length * 3.5) + 16;
+
+    // Assinaturas (Lado Direito no fundo)
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(10);
-    docPdf.text("ASSINATURA DOS RESPONSÁVEIS PELA EXECUÇÃO", 105, y, { align: 'center' }); y += 25;
+    docPdf.text("ASSINATURA DOS RESPONSÁVEIS PELA EXECUÇÃO", 221, yDir, { align: 'center' }); yDir += 20;
 
-    // Assinatura Executante
-    if (chk.assinaturaExecutante) { try { docPdf.addImage(chk.assinaturaExecutante, 'JPEG', 35, y - 20, 35, 18); } catch(e){} }
-    docPdf.setLineWidth(0.5); docPdf.line(20, y, 85, y);
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("ASSINATURA DO EXECUTANTE", 52.5, y + 4, { align: 'center' });
+    if (chk.assinaturaExecutante) { try { docPdf.addImage(chk.assinaturaExecutante, 'JPEG', 160, yDir - 15, 30, 15); } catch(e){} }
+    docPdf.setDrawColor(0,0,0); docPdf.setLineWidth(0.5); docPdf.line(155, yDir, 215, yDir);
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(8);
+    docPdf.text("ASSINATURA DO EXECUTANTE", 185, yDir + 4, { align: 'center' });
     docPdf.setFont("helvetica", "normal");
-    docPdf.text(`Nome: ${chk.executanteNome}`, 52.5, y + 9, { align: 'center' });
+    docPdf.text(`Nome: ${chk.executanteNome}`, 185, yDir + 8, { align: 'center' });
 
-    // Assinatura Vigia
-    if (chk.assinaturaVigia) { try { docPdf.addImage(chk.assinaturaVigia, 'JPEG', 135, y - 20, 35, 18); } catch(e){} }
-    docPdf.line(120, y, 185, y);
+    if (chk.assinaturaVigia) { try { docPdf.addImage(chk.assinaturaVigia, 'JPEG', 235, yDir - 15, 30, 15); } catch(e){} }
+    docPdf.line(225, yDir, 285, yDir);
     docPdf.setFont("helvetica", "bold");
-    docPdf.text("ASSINATURA DO VIGIA", 152.5, y + 4, { align: 'center' });
+    docPdf.text("ASSINATURA DO VIGIA", 255, yDir + 4, { align: 'center' });
     docPdf.setFont("helvetica", "normal");
-    docPdf.text(`Nome: ${chk.vigiaNome}`, 152.5, y + 9, { align: 'center' });
+    docPdf.text(`Nome: ${chk.vigiaNome}`, 255, yDir + 8, { align: 'center' });
   };
 
+  // Botão 1: Baixar Individual (Atenção ao 'l' de landscape/horizontal)
   const baixarChecklistIndividual = (truque: any) => {
-    const docPdf = new jsPDF('p', 'mm', 'a4');
-    renderizarPaginaChecklist(docPdf, truque);
+    const docPdf = new jsPDF('l', 'mm', 'a4'); 
+    renderizarPaginaChecklistHorizontal(docPdf, truque);
     docPdf.save(`Checklist_Jateamento_${truque.identificacao}.pdf`);
   };
 
+  // Botão 2: Baixar Lote da Semana (Atenção ao 'l' de landscape/horizontal)
   const baixarChecklistsDaSemana = () => {
     const seteDiasAtras = new Date();
     seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
@@ -247,17 +242,19 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
 
     if (filtrados.length === 0) return avisar("Nenhum checklist preenchido nos últimos 7 dias.", "erro");
 
-    const docPdf = new jsPDF('p', 'mm', 'a4');
+    const docPdf = new jsPDF('l', 'mm', 'a4');
     filtrados.forEach((t, index) => {
       if (index > 0) docPdf.addPage();
-      renderizarPaginaChecklist(docPdf, t);
+      renderizarPaginaChecklistHorizontal(docPdf, t);
     });
 
     const dataHoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
     docPdf.save(`Lote_Checklists_Semanal_${dataHoje}.pdf`);
   };
 
-  // Geração do PDF Antigo de Resumo de Produção (Galpão)
+  // ============================================================================
+  // RELATÓRIO ANTIGO DE PRODUÇÃO DO PÁTIO (Este mantém-se na vertical 'p')
+  // ============================================================================
   const gerarRelatorioTruques = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const dataAtual = new Date().toLocaleDateString('pt-BR');
@@ -295,6 +292,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+      
       {/* Coluna 1: Cadastro */}
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', height: 'fit-content' }}>
         <h3 style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 20px 0', color: '#1e293b' }}>
@@ -312,10 +310,10 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           
           <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '10px', paddingTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <Button type="button" onClick={gerarRelatorioTruques} style={{ backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <Printer size={16}/> Resumo de Produção
+              <Printer size={16}/> Resumo de Produção (Galpão)
             </Button>
             <Button type="button" onClick={baixarChecklistsDaSemana} style={{ backgroundColor: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <CalendarDays size={16}/> Checklists da Semana
+              <CalendarDays size={16}/> Checklists da Semana (PDF)
             </Button>
           </div>
         </form>
@@ -348,7 +346,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong>{t.identificacao}</strong>
                   {t.checklistJateamento && (
-                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist">
+                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist Original">
                       <FileDown size={20} />
                     </button>
                   )}
@@ -377,7 +375,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong>{t.identificacao}</strong>
                   {t.checklistJateamento && (
-                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist">
+                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist Original">
                       <FileDown size={20} />
                     </button>
                   )}
@@ -411,7 +409,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
                 <span style={{ fontWeight: 'bold', color: '#15803d' }}>{t.identificacao}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {t.checklistJateamento && (
-                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist">
+                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist Original">
                       <FileDown size={18} />
                     </button>
                   )}
