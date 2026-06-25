@@ -27,11 +27,10 @@ interface Props {
 }
 
 export default function HistoricoAdvertencias({ advertencias }: Props) {
-  // Estado para o Filtro de Lote
   const [periodoLote, setPeriodoLote] = useState('completo');
 
   // ✨ FUNÇÃO REUTILIZÁVEL: Desenha o layout de uma advertência numa página do PDF
-  const renderizarPaginaAdvertencia = (docPdf: jsPDF, adv: Advertencia, dataAtual: string) => {
+  const renderizarPaginaAdvertencia = (docPdf: jsPDF, adv: Advertencia) => {
     const dataFato = adv.dataOcorrencia.split('-').reverse().join('/') + (adv.horaOcorrencia ? ` às ${adv.horaOcorrencia}` : '');
     const tituloDoc = adv.tipo === 'escrita' ? "COMUNICAÇÃO DE ADVERTÊNCIA DISCIPLINAR" : "REGISTRO DE ORIENTAÇÃO VERBAL";
     
@@ -80,10 +79,10 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
     const splitConclusao = docPdf.splitTextToSize(textoConclusao, 180);
     docPdf.text(splitConclusao, 15, yConclusao);
 
-    const yLocalData = yConclusao + (splitConclusao.length * 5) + 15;
-    docPdf.text(`Araraquara/SP, ${dataAtual}.`, 195, yLocalData, { align: 'right' });
-
-    const yAssinaturas = yLocalData + 35;
+    // ✨ A linha de "Araraquara/SP..." foi removida daqui!
+    // As assinaturas agora descem calculando diretamente do fim do texto da conclusão.
+    const yAssinaturas = yConclusao + (splitConclusao.length * 5) + 25;
+    
     docPdf.setDrawColor(0,0,0);
     
     // ✨ LÓGICA DE ASSINATURA DINÂMICA
@@ -156,9 +155,7 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
   // 📄 GERA UM PDF INDIVIDUAL
   const gerarPDFFormal = (adv: Advertencia) => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
-    const dataAtual = new Date().toLocaleDateString('pt-BR');
-    
-    renderizarPaginaAdvertencia(docPdf, adv, dataAtual);
+    renderizarPaginaAdvertencia(docPdf, adv); // Omitimos a data atual
 
     const dataArquivo = adv.dataOcorrencia.split('-').reverse().join('-');
     const primeiroNome = adv.funcionarioNome.split(' ')[0];
@@ -194,15 +191,15 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
     filtradas.sort((a, b) => new Date(`${a.dataOcorrencia}T12:00:00`).getTime() - new Date(`${b.dataOcorrencia}T12:00:00`).getTime());
 
     const docPdf = new jsPDF('p', 'mm', 'a4');
-    const dataAtual = new Date().toLocaleDateString('pt-BR');
 
     // Desenha cada advertência no PDF, adicionando páginas novas
     filtradas.forEach((adv, index) => {
       if (index > 0) docPdf.addPage();
-      renderizarPaginaAdvertencia(docPdf, adv, dataAtual);
+      renderizarPaginaAdvertencia(docPdf, adv);
     });
 
-    docPdf.save(`Dossie_Ocorrencias_${periodoLote.toUpperCase()}_${dataAtual.replace(/\//g, '-')}.pdf`);
+    const dataAtualString = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+    docPdf.save(`Histórico_Ocorrencias_${periodoLote.toUpperCase()}_${dataAtualString}.pdf`);
   };
 
   return (
@@ -212,7 +209,6 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
         <h3 style={{ fontSize: '18px', color: '#1e293b', margin: 0, fontWeight: 'bold' }}>Histórico do RH</h3>
       </div>
 
-      {/* ✨ NOVO: Painel para baixar o Dossiê/Lote */}
       <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
         <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Calendar size={16} color="#3b82f6" /> Emitir Dossiê de Ocorrências (PDF Único)
