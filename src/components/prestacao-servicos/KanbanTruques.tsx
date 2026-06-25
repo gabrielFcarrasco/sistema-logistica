@@ -113,7 +113,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   };
 
   // ============================================================================
-  // ✨ NOVO: GERADOR DO CHECKLIST EM PAISAGEM (HORIZONTAL) - 2 COLUNAS
+  // ✨ GERADOR DO CHECKLIST EM PAISAGEM (Horizontal) - CORRIGIDO
   // ============================================================================
   const renderizarPaginaChecklistHorizontal = (docPdf: jsPDF, truque: any) => {
     const chk = truque.checklistJateamento;
@@ -121,20 +121,26 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
 
     const dataPreenchimento = chk.dataPreenchimento?.toDate().toLocaleDateString('pt-BR') || "Data Indisponível";
 
-    // --- LADO ESQUERDO: CABEÇALHO, OBJETIVO E TABELA (X de 10 a 145) ---
-    try { docPdf.addImage(logoCarvalho, 'PNG', 10, 10, 35, 12); } catch(e){}
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(12); docPdf.setTextColor(30, 41, 59);
-    docPdf.text("CHECKLIST DE SEGURANÇA JATEAMENTO", 77.5, 15, { align: 'center' });
-    docPdf.setFontSize(9);
-    docPdf.text("DA ARANHA DO TRUQUE TRENS 59500", 77.5, 20, { align: 'center' });
+    // --- CABEÇALHO LARGURA TOTAL (X vai de 10 a 287) ---
+    // Proporção corrigida para a logo não esticar (ex: 35x10)
+    try { docPdf.addImage(logoCarvalho, 'PNG', 10, 10, 35, 10); } catch(e){} 
     
-    docPdf.setFontSize(8); docPdf.setFont("helvetica", "bold");
-    docPdf.text(`Data: ${dataPreenchimento} | Plaqueta: ${truque.identificacao}`, 145, 20, { align: 'right' });
+    // Título e Subtítulo centralizados no meio exato da folha A4 Paisagem (148.5mm)
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(13); docPdf.setTextColor(30, 41, 59);
+    docPdf.text("CHECKLIST DE SEGURANÇA JATEAMENTO", 148.5, 14, { align: 'center' });
+    docPdf.setFontSize(10);
+    docPdf.text("DA ARANHA DO TRUQUE TRENS 59500", 148.5, 20, { align: 'center' });
     
+    // Dados da Plaqueta jogados para o lado direito da folha
+    docPdf.setFontSize(9); docPdf.setFont("helvetica", "bold");
+    docPdf.text(`Data: ${dataPreenchimento} | Plaqueta: ${truque.identificacao}`, 287, 20, { align: 'right' });
+    
+    // Linha divisória ocupando toda a extensão
     docPdf.setLineWidth(0.4); docPdf.setDrawColor(30, 41, 59);
-    docPdf.line(10, 24, 145, 24); 
+    docPdf.line(10, 24, 287, 24); 
     
-    let yEsq = 29;
+    // --- LADO ESQUERDO: OBJETIVO E TABELA (X de 10 a 145) ---
+    let yEsq = 30; // Descemos um pouco para respirar
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
     docPdf.text("OBJETIVO", 10, yEsq); yEsq += 4;
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
@@ -164,16 +170,16 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     // --- LINHA DIVISÓRIA CENTRAL ---
     docPdf.setDrawColor(200, 200, 200);
     docPdf.setLineWidth(0.2);
-    docPdf.line(150, 10, 150, 200);
+    docPdf.line(150, 28, 150, 200);
 
     // --- LADO DIREITO: REGRAS E ASSINATURAS (X de 155 a 287) ---
-    let yDir = 15;
+    let yDir = 30; // Alinhado perfeitamente com o lado esquerdo
     
     docPdf.setTextColor(30, 41, 59);
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
     docPdf.text("OBRIGAÇÕES DO VIGIA", 155, yDir);
     docPdf.text("OBRIGAÇÕES DO EXECUTANTE", 220, yDir);
-    yDir += 4;
+    yDir += 5;
     
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
     let yVigia = yDir;
@@ -184,21 +190,21 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
 
     let yExec = yDir;
     OBRIGACOES_EXEC.forEach(txt => {
-      const linhas = docPdf.splitTextToSize(txt, 60);
+      const linhas = docPdf.splitTextToSize(txt, 65);
       docPdf.text(linhas, 220, yExec); yExec += linhas.length * 3.5;
     });
 
     yDir = Math.max(yVigia, yExec) + 6;
 
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("MEDIDAS PREVENTIVAS GERAIS", 155, yDir); yDir += 4;
+    docPdf.text("MEDIDAS PREVENTIVAS GERAIS", 155, yDir); yDir += 5;
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
     const medidasText = "1. Exaustão | 2. Distanciamento seguro | 3. Fechamento de cabine | 4. Monitoramento contínuo | 5. Exames específicos para poeiras | 6. EPIs | 7. Inspeções diárias | 8. Evitar improvisos | 9. Uso de válvulas | 10. Sinalização restrita | 11. Descansos | 12. Armazenamento seguro | 13. Verificação de abrasivo.";
     const splitMedidas = docPdf.splitTextToSize(medidasText, 132);
     docPdf.text(splitMedidas, 155, yDir); yDir += (splitMedidas.length * 3.5) + 6;
 
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("EPI's E EPC's OBRIGATÓRIOS", 155, yDir); yDir += 4;
+    docPdf.text("EPI's E EPC's OBRIGATÓRIOS", 155, yDir); yDir += 5;
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
     const episText = "Capacete de jatista (ar mandado) | Jaqueta couro/raspa | Calça couro/raspa | Luvas cano longo | Proteção pés | Sistema de Exaustão | Compressor e Filtro | Manômetros independentes.";
     const splitEpis = docPdf.splitTextToSize(episText, 132);
@@ -208,14 +214,15 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(10);
     docPdf.text("ASSINATURA DOS RESPONSÁVEIS PELA EXECUÇÃO", 221, yDir, { align: 'center' }); yDir += 20;
 
-    if (chk.assinaturaExecutante) { try { docPdf.addImage(chk.assinaturaExecutante, 'JPEG', 160, yDir - 15, 30, 15); } catch(e){} }
+    // Proporções de assinatura corrigidas para 30x12 para não ficarem esmagadas
+    if (chk.assinaturaExecutante) { try { docPdf.addImage(chk.assinaturaExecutante, 'JPEG', 160, yDir - 15, 30, 12); } catch(e){} }
     docPdf.setDrawColor(0,0,0); docPdf.setLineWidth(0.5); docPdf.line(155, yDir, 215, yDir);
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(8);
     docPdf.text("ASSINATURA DO EXECUTANTE", 185, yDir + 4, { align: 'center' });
     docPdf.setFont("helvetica", "normal");
     docPdf.text(`Nome: ${chk.executanteNome}`, 185, yDir + 8, { align: 'center' });
 
-    if (chk.assinaturaVigia) { try { docPdf.addImage(chk.assinaturaVigia, 'JPEG', 235, yDir - 15, 30, 15); } catch(e){} }
+    if (chk.assinaturaVigia) { try { docPdf.addImage(chk.assinaturaVigia, 'JPEG', 235, yDir - 15, 30, 12); } catch(e){} }
     docPdf.line(225, yDir, 285, yDir);
     docPdf.setFont("helvetica", "bold");
     docPdf.text("ASSINATURA DO VIGIA", 255, yDir + 4, { align: 'center' });
@@ -223,14 +230,12 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     docPdf.text(`Nome: ${chk.vigiaNome}`, 255, yDir + 8, { align: 'center' });
   };
 
-  // Botão 1: Baixar Individual (Atenção ao 'l' de landscape/horizontal)
   const baixarChecklistIndividual = (truque: any) => {
     const docPdf = new jsPDF('l', 'mm', 'a4'); 
     renderizarPaginaChecklistHorizontal(docPdf, truque);
     docPdf.save(`Checklist_Jateamento_${truque.identificacao}.pdf`);
   };
 
-  // Botão 2: Baixar Lote da Semana (Atenção ao 'l' de landscape/horizontal)
   const baixarChecklistsDaSemana = () => {
     const seteDiasAtras = new Date();
     seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
@@ -253,12 +258,12 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   };
 
   // ============================================================================
-  // RELATÓRIO ANTIGO DE PRODUÇÃO DO PÁTIO (Este mantém-se na vertical 'p')
+  // RELATÓRIO DE PRODUÇÃO (Galpão) - Continua na Vertical (Portrait) e proporção logo corrigida
   // ============================================================================
   const gerarRelatorioTruques = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const dataAtual = new Date().toLocaleDateString('pt-BR');
-    try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 40, 14); } catch(e){}
+    try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 35, 10); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(16); docPdf.setTextColor(30, 41, 59);
     docPdf.text("RELATÓRIO DE PRODUÇÃO - TRUQUES", 105, 18, { align: 'center' });
     docPdf.setFontSize(10); docPdf.setTextColor(100, 100, 100); docPdf.text(`Emissão: ${dataAtual}`, 195, 20, { align: 'right' });
