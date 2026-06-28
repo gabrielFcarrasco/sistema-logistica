@@ -27,22 +27,41 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
 
   useEffect(() => {
     if (!setorAtivo) return;
-    const q = query(collection(db, 'ordens_servico'), where('setorId', '==', setorAtivo));
-    const unsub = onSnapshot(q, (snap) => {
-      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      lista.sort((a: any, b: any) => (b.dataEmissao?.toMillis() || 0) - (a.dataEmissao?.toMillis() || 0));
-      setHistoricoOS(lista);
-      if (osAberta) {
-        const osAtualizada = lista.find(os => os.id === osAberta.id);
-        if (osAtualizada) setOsAberta(osAtualizada);
-      }
-    });
-    return () => unsub();
-  }, [setorAtivo, osAberta]);
 
-  // ==========================================
-  // FUNÇÕES DE CONTROLO DO CARRINHO E EDIÇÃO
-  // ==========================================
+    const q = query(
+        collection(db, 'ordens_servico'),
+        where('setorId', '==', setorAtivo)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+
+        const lista = snap.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        lista.sort(
+            (a: any, b: any) =>
+                (b.dataEmissao?.toMillis() || 0) -
+                (a.dataEmissao?.toMillis() || 0)
+        );
+
+        setHistoricoOS(lista);
+
+        setOsAberta(prev => {
+            if (!prev) return null;
+
+            const atualizada = lista.find(os => os.id === prev.id);
+
+            return atualizada || null;
+        });
+
+    });
+
+    return () => unsub();
+
+}, [setorAtivo]);
+
   const adicionarItemOS = () => setItensOS([...itensOS, { quantidade: 1, descricao: '', serial: '' }]);
   const removerItemOS = (index: number) => setItensOS(itensOS.filter((_, i) => i !== index));
   const atualizarItemOS = (index: number, campo: 'quantidade' | 'descricao' | 'serial', valor: any) => {
@@ -52,13 +71,38 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
   };
 
   const iniciarEdicaoOS = (os: any) => {
+
+    if (!os) return;
+
     setOsEditando(os);
-    setTipoEscopo(os.tipoEscopo || 'Peças Avulsas / Componentes');
-    setItensOS(os.itens || [{ quantidade: 1, descricao: '', serial: '' }]);
-    setDescricaoServicoOS(os.descricaoServico || '');
-    setOsAberta(null); 
-    window.scrollTo({ top: 0, behavior: 'smooth' }); 
-  };
+
+    setTipoEscopo(
+        os.tipoEscopo || 'Peças Avulsas / Componentes'
+    );
+
+    setItensOS(
+        os.itens?.length
+            ? os.itens
+            : [{
+                quantidade: 1,
+                descricao: '',
+                serial: ''
+            }]
+    );
+
+    setDescricaoServicoOS(
+        os.descricaoServico || ''
+    );
+
+    setOsAberta(null);
+
+    setTimeout(() => {
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }, 100);
+};
 
   const cancelarEdicaoOS = () => {
     setOsEditando(null);
@@ -67,48 +111,85 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
     setDescricaoServicoOS('');
   };
 
-  // ==========================================
-  // SALVAR E ASSINAR
-  // ==========================================
   const registrarESalvarOS = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (itensOS.length === 0 || itensOS.some(i => !i.descricao)) return avisar("Preencha as descrições no carrinho.", "erro");
+  e.preventDefault();
 
-    try {
-      if (osEditando) {
-        await updateDoc(doc(db, 'ordens_servico', osEditando.id), { tipoEscopo, itens: itensOS, descricaoServico: descricaoServicoOS });
-        avisar("OS atualizada!");
-      } else {
-        await addDoc(collection(db, 'ordens_servico'), {
-          setorId: setorAtivo, tipoEscopo, itens: itensOS, descricaoServico: descricaoServicoOS,
-          assinaturaPrestador: '', assinaturaCliente: '', status: 'Aguardando Assinaturas', dataEmissao: serverTimestamp()
-        });
-        avisar("OS salva no banco!");
-      }
-      cancelarEdicaoOS();
-    } catch (e) { avisar("Erro ao salvar a OS.", "erro"); }
-  };
+  if (
+    itensOS.length === 0 ||
+    itensOS.some(i => !i.descricao.trim())
+  ) {
+    avisar("Preencha as descrições no carrinho.", "erro");
+    return;
+  }
 
-  const salvarAssinaturaNaOS = async (base64: string) => {
+  try {
+    if (osEditando) {
+      await updateDoc(
+        doc(db, "ordens_servico", osEditando.id),
+        {
+          tipoEscopo,
+          itens: itensOS,
+          descricaoServico: descricaoServicoOS,
+        }
+      );
+
+      avisar("OS atualizada com sucesso!");
+      setOsAberta(null);
+
+    } else {
+      await addDoc(
+        collection(db, "ordens_servico"),
+        {
+          setorId: setorAtivo,
+          tipoEscopo,
+          itens: itensOS,
+          descricaoServico: descricaoServicoOS,
+          assinaturaPrestador: "",
+          assinaturaCliente: "",
+          status: "Aguardando Assinaturas",
+          dataEmissao: serverTimestamp(),
+        }
+      );
+
+      avisar("OS salva no banco!");
+    }
+
+    cancelarEdicaoOS();
+
+  } catch (e) {
+    console.error(e);
+    avisar("Erro ao salvar a OS.", "erro");
+  }
+};
+
+  // ✨ ATUALIZADO: Agora recebe a Imagem (base64) e o NOME de quem assinou!
+  const salvarAssinaturaNaOS = async (base64: string, nomeDigitado: string) => {
     if (!osAberta) return;
     try {
       const atualizacoes: any = {};
-      if (modalAssinatura === 'prestador') atualizacoes.assinaturaPrestador = base64;
-      if (modalAssinatura === 'cliente') atualizacoes.assinaturaCliente = base64;
+      
+      if (modalAssinatura === 'prestador') {
+        atualizacoes.assinaturaPrestador = base64;
+        atualizacoes.nomePrestadorAssinatura = nomeDigitado;
+      }
+      
+      if (modalAssinatura === 'cliente') {
+        atualizacoes.assinaturaCliente = base64;
+        atualizacoes.nomeClienteAssinatura = nomeDigitado;
+      }
+      
       const presFinal = modalAssinatura === 'prestador' ? base64 : osAberta.assinaturaPrestador;
       const cliFinal = modalAssinatura === 'cliente' ? base64 : osAberta.assinaturaCliente;
       if (presFinal && cliFinal) atualizacoes.status = 'Concluída';
 
       await updateDoc(doc(db, 'ordens_servico', osAberta.id), atualizacoes);
-      avisar("Assinatura anexada!"); setModalAssinatura('fechado');
+      avisar("Assinatura anexada com sucesso!"); setModalAssinatura('fechado');
     } catch(e) { avisar("Erro ao salvar assinatura", "erro"); }
   };
 
   // ==========================================
-  // PDF ENRIQUECIDO E WHATSAPP
+  // PDF ENRIQUECIDO COM OS NOMES NAS ASSINATURAS
   // ==========================================
-  
-  // Função mestre que constrói o PDF de apenas 1 VIA baseada no parâmetro 'tipoVia'
   const construirPDFViaUnica = (osDados: any, tipoVia: 'cliente' | 'interna') => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const azulEscuro = [30, 41, 59];
@@ -116,12 +197,10 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
     const numeroOS = osDados.id ? osDados.id.slice(-6).toUpperCase() : "NOVA";
     const tituloVia = tipoVia === 'cliente' ? "1ª VIA - CLIENTE" : "2ª VIA - CONTROLE INTERNO";
 
-    // Logo e Título
     try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 40, 14); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(18); docPdf.setTextColor(...azulEscuro);
     docPdf.text("ORDEM DE SERVIÇO", 105, 18, { align: 'center' });
     
-    // Cabeçalho Direito
     docPdf.setFontSize(10); docPdf.setTextColor(100, 100, 100);
     docPdf.text(tituloVia, 195, 15, { align: 'right' });
     docPdf.text(`OS Nº: ${numeroOS}`, 195, 20, { align: 'right' });
@@ -129,14 +208,13 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
     
     docPdf.setLineWidth(0.5); docPdf.line(15, 29, 195, 29);
     
-    // Quadros Informativos Melhorados
     docPdf.setFillColor(241, 245, 249); docPdf.rect(15, 33, 80, 26, "F");
     docPdf.setFontSize(9); docPdf.setTextColor(0, 0, 0);
     docPdf.setFont("helvetica", "bold"); docPdf.text("PRESTADOR DO SERVIÇO", 18, 38);
     docPdf.setFont("helvetica", "normal"); 
     docPdf.text("CARVALHO FUNILARIA LTDA", 18, 43);
     docPdf.text("CNPJ: 31.362.302/0001-33", 18, 48);
-    docPdf.text("Tel: (16) 99720-2288 | acarloscarvalho71@gmail.com", 18, 53); // Substitua pelo contato correto
+    docPdf.text("Tel: (16) 99720-2288 | acarloscarvalho71@gmail.com", 18, 53); 
     
     docPdf.setFillColor(241, 245, 249); docPdf.rect(115, 33, 80, 26, "F");
     docPdf.setFont("helvetica", "bold"); docPdf.text("CLIENTE / TOMADOR", 118, 38);
@@ -144,14 +222,12 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
     const infoCliente = docPdf.splitTextToSize("Hyundai Rotem Brasil Industria e Comercio de Trens Ltda.\nCNPJ: 17.866.875/0004-16", 74);
     docPdf.text(infoCliente, 118, 43);
 
-    // Status e Escopo
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(11);
     docPdf.text("INFORMAÇÕES DO SERVIÇO", 15, 66);
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(10);
     docPdf.text(`Escopo de Atuação: ${osDados.tipoEscopo}`, 15, 72);
     docPdf.text(`Status Atual: ${osDados.status.toUpperCase()}`, 195, 72, { align: 'right' });
     
-    // Tabela Enriquecida
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
     renderTable(docPdf, {
       startY: 78,
@@ -165,7 +241,6 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
 
     const finalY = (docPdf as any).lastAutoTable.finalY + 10;
     
-    // Observações Técnicas
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(11);
     docPdf.text("OBSERVAÇÕES TÉCNICAS E ATIVIDADES ADICIONAIS", 15, finalY);
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(10);
@@ -173,33 +248,44 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
     const splitDesc = docPdf.splitTextToSize(textoObs, 180);
     docPdf.text(splitDesc, 15, finalY + 7);
 
-    // Termo de Responsabilidade
     const termoY = finalY + 18 + (splitDesc.length * 5);
     docPdf.setFontSize(8); docPdf.setTextColor(100, 100, 100);
     const termoText = "A assinatura deste documento confirma a execução, conferência e aceite dos serviços acima descritos nas quantidades indicadas. O cliente atesta que as peças foram recebidas e inspecionadas em conformidade com o escopo acordado entre as partes.";
     const termo = docPdf.splitTextToSize(termoText, 180);
     docPdf.text(termo, 15, termoY);
 
-    // Assinaturas
     const yAssinatura = Math.max(termoY + 30, 235);
     docPdf.setDrawColor(0,0,0); docPdf.setLineWidth(0.5); docPdf.setTextColor(0, 0, 0);
 
+    // ✨ BLOCO DE ASSINATURA: PRESTADOR
     if (osDados.assinaturaPrestador) { try { docPdf.addImage(osDados.assinaturaPrestador, 'JPEG', 30, yAssinatura - 25, 40, 20); } catch(e){} }
     docPdf.line(20, yAssinatura, 80, yAssinatura);
     docPdf.setFontSize(10); docPdf.setFont("helvetica", "bold");
     docPdf.text("Carvalho Funilaria e Pinturas", 50, yAssinatura + 5, { align: 'center' });
-    docPdf.setFont("helvetica", "normal"); docPdf.text("Prestador do Serviço", 50, yAssinatura + 10, { align: 'center' });
+    docPdf.setFont("helvetica", "normal"); 
+    docPdf.text("Prestador do Serviço", 50, yAssinatura + 10, { align: 'center' });
+    // Adiciona o NOME se existir na base de dados
+    if (osDados.nomePrestadorAssinatura) {
+      docPdf.setFontSize(8);
+      docPdf.text(`Assinado por: ${osDados.nomePrestadorAssinatura}`, 50, yAssinatura + 15, { align: 'center' });
+    }
 
+    // ✨ BLOCO DE ASSINATURA: CLIENTE
     if (osDados.assinaturaCliente) { try { docPdf.addImage(osDados.assinaturaCliente, 'JPEG', 130, yAssinatura - 25, 40, 20); } catch(e){} }
     docPdf.line(120, yAssinatura, 180, yAssinatura);
     docPdf.setFontSize(10); docPdf.setFont("helvetica", "bold");
     docPdf.text("Hyundai Rotem Brasil", 150, yAssinatura + 5, { align: 'center' });
-    docPdf.setFont("helvetica", "normal"); docPdf.text("De Acordo / Recebedor", 150, yAssinatura + 10, { align: 'center' });
+    docPdf.setFont("helvetica", "normal"); 
+    docPdf.text("De Acordo / Recebedor", 150, yAssinatura + 10, { align: 'center' });
+    // Adiciona o NOME se existir na base de dados (Inserido internamente ou pelo link externo)
+    if (osDados.nomeClienteAssinatura) {
+      docPdf.setFontSize(8);
+      docPdf.text(`Assinado por: ${osDados.nomeClienteAssinatura}`, 150, yAssinatura + 15, { align: 'center' });
+    }
 
     return docPdf;
   };
 
-  // Botões de Ação Separados
   const gerarEBaixarPDF = (tipoVia: 'cliente' | 'interna') => {
     if (!osAberta) return;
     const docPdf = construirPDFViaUnica(osAberta, tipoVia);
@@ -209,7 +295,7 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
 
   const visualizarPDF = () => {
     if (!osAberta) return;
-    const docPdf = construirPDFViaUnica(osAberta, 'cliente'); // Preview baseia-se na via do cliente
+    const docPdf = construirPDFViaUnica(osAberta, 'cliente'); 
     const blobUrl = docPdf.output('bloburl');
     setPdfPreviewUrl(blobUrl.toString());
   };
@@ -229,7 +315,9 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
         <h3 style={{ fontSize: '16px', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <FileText size={18} color="#8b5cf6" /> {osEditando ? 'Editando OS' : 'Elaborar Nova OS'}
         </h3>
-        <form onSubmit={registrarESalvarOS} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <form
+    key={osEditando?.id || "nova"}
+    onSubmit={registrarESalvarOS} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <select value={tipoEscopo} onChange={e => setTipoEscopo(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
             <option>Trem Inteiro</option><option>Carro Específico</option><option>Peças Avulsas / Componentes</option>
           </select>
@@ -286,7 +374,19 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
               <h2>OS Nº {osAberta.id.slice(-6).toUpperCase()}</h2>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={visualizarPDF} style={{ background: '#f1f5f9', color: '#475569', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }} title="Pré-visualizar Documento"><Eye size={20}/></button>
-                {osAberta.status !== 'Concluída' && <button onClick={() => {setOsEditando(osAberta); setOsAberta(null);}} style={{ background: '#e0e7ff', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><Edit size={20}/></button>}
+                {osAberta.status !== 'Concluída' && 
+                <button
+  onClick={() => iniciarEdicaoOS(osAberta)}
+  style={{
+    background: '#e0e7ff',
+    border: 'none',
+    padding: '8px',
+    borderRadius: '8px',
+    cursor: 'pointer'
+  }}
+>
+    <Edit size={20}/>
+</button>}
                 <button onClick={() => setOsAberta(null)} style={{ background: '#f1f5f9', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><X size={20}/></button>
               </div>
             </div>
@@ -304,12 +404,26 @@ export default function GerenciadorOS({ setorAtivo, isPortrait, avisar }: Props)
             <div style={{ borderTop: '2px dashed #e2e8f0', paddingTop: '15px', marginBottom: '20px' }}>
               <h4 style={{ fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>Assinatura Presencial</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <Button onClick={() => setModalAssinatura('prestador')} style={{ backgroundColor: osAberta.assinaturaPrestador ? '#10b981' : '#3b82f6' }}>Assinar (Carvalho)</Button>
-                <Button onClick={() => setModalAssinatura('cliente')} style={{ backgroundColor: osAberta.assinaturaCliente ? '#10b981' : '#8b5cf6' }}>Assinar (Hyundai)</Button>
+                
+                <Button 
+                  onClick={() => setModalAssinatura('prestador')} 
+                  disabled={!!osAberta.assinaturaPrestador}
+                  style={{ backgroundColor: osAberta.assinaturaPrestador ? '#10b981' : '#3b82f6', opacity: osAberta.assinaturaPrestador ? 0.7 : 1 }}
+                >
+                  {osAberta.assinaturaPrestador ? '✅ Carvalho Assinou' : 'Assinar (Carvalho)'}
+                </Button>
+                
+                <Button 
+                  onClick={() => setModalAssinatura('cliente')} 
+                  disabled={!!osAberta.assinaturaCliente}
+                  style={{ backgroundColor: osAberta.assinaturaCliente ? '#10b981' : '#8b5cf6', opacity: osAberta.assinaturaCliente ? 0.7 : 1 }}
+                >
+                  {osAberta.assinaturaCliente ? '✅ Hyundai Assinou' : 'Assinar (Hyundai)'}
+                </Button>
+
               </div>
             </div>
 
-            {/* ✨ SEPARAÇÃO DOS DOWNLOADS DE PDF */}
             <div style={{ borderTop: '2px solid #f1f5f9', paddingTop: '15px' }}>
               <h4 style={{ fontSize: '14px', color: '#1e293b', marginBottom: '10px' }}>Baixar Vias do Documento Final</h4>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

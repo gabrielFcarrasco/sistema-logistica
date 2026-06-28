@@ -1,55 +1,20 @@
 // src/components/prestacao-servicos/KanbanTruques.tsx
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import logoCarvalho from '../../assets/logopdf.png'; 
 
-import { TrainFront, ArrowRight, Check, Printer, Paintbrush, Undo2, ClipboardCheck, FileDown, CalendarDays } from 'lucide-react';
+import { ArrowRight, Check, Paintbrush, Undo2, ClipboardCheck, FileDown } from 'lucide-react';
 import Button from '../ui/Button';
+
+// ✨ Componentes Isolados e Ferramentas importadas
 import ModalChecklistJateamento from './ModalChecklistJateamento';
+import FormularioLancarTruque from './FormularioLancarTruque';
+import { baixarChecklistIndividual, baixarChecklistsDaSemana, gerarRelatorioTruques } from '../../utils/pdfTruques';
 
 interface Props { setorAtivo: string; funcionarios: any[]; avisar: (msg: string, tipo?: 'sucesso'|'erro') => void; }
 
-const PERGUNTAS_CHECKLIST = [
-  "1. Mapa de risco e EPI's implantado e disponível no local?",
-  "2. Área devidamente isolada e sinalizada?",
-  "3. Sistema de ventilação/exaustão funcionando corretamente?",
-  "4. Integridade dos equipamentos de jateamento verificada?",
-  "5. Integridade das mangueiras e conexões pneumáticas conferida?",
-  "6. EPI específico para jateamento disponível e em uso?",
-  "7. Funcionamento do compressor pneumático conferido?",
-  "8. Vigia posicionado, treinado e apto para operação?",
-  "9. Sistema de parada de emergência do compressor testado?",
-  "10. Comunicação efetiva entre operador e vigia testada?",
-  "11. Coleta e destinação correta dos resíduos gerados definida?",
-  "12. Pós-atividade: limpeza da área, equipamentos e EPIs realizada?"
-];
-
-const OBRIGACOES_VIGIA = [
-  "1. Permanecer do lado externo da cabine durante a operação, garantindo visibilidade clara.",
-  "2. Acionar o compressor somente quando o executante estiver posicionado e sinalizar.",
-  "3. Monitorar assertivamente para qualquer sinal de emergência (ruídos, vazamentos).",
-  "4. Atuar precisamente no desligamento do sistema em caso de anormalidade."
-];
-
-const OBRIGACOES_EXEC = [
-  "1. Seguir os procedimentos de segurança do checklist.",
-  "2. Realizar inspeção preliminar dos equipamentos, EPI's e EPC's.",
-  "3. Reportar imediatamente qualquer anormalidade.",
-  "4. Utilizar todos os EPI's e EPC's designados.",
-  "5. Após execução, realizar higienização e organização do ambiente.",
-  "6. Destinar adequadamente os resíduos."
-];
-
 export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Props) {
   const [truques, setTruques] = useState<any[]>([]);
-  const [truqueId, setTruqueId] = useState('');
-  const [colaboradorJateouId, setColaboradorJateouId] = useState('');
-  const [jaPintado, setJaPintado] = useState(false);
-  const [operadoresKanban, setOperadoresKanban] = useState<Record<string, string>>({});
-  
   const [idsOcultos, setIdsOcultos] = useState<string[]>([]);
   const [novoValorGalpao, setNovoValorGalpao] = useState('');
 
@@ -67,227 +32,50 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     return () => unsub();
   }, [setorAtivo]);
 
-  const registrarTruque = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!truqueId) return avisar("Preencha os números da Plaquinha.", "erro");
-    if (!/^M\d{3}$/.test(truqueId)) return avisar("A plaquinha deve conter M e 3 números. Ex: M001.", "erro");
-
-    try {
-      const funcNome = colaboradorJateouId ? funcionarios.find(f => f.id === colaboradorJateouId)?.nome || 'Desconhecido' : 'A Definir';
-      await addDoc(collection(db, 'truques_producao'), {
-        setorId: setorAtivo, identificacao: truqueId, colaboradorJateouId: colaboradorJateouId || 'pendente', 
-        colaboradorJateouNome: funcNome, status: jaPintado ? 'pintado' : 'pronto_jateamento', dataCadastro: serverTimestamp(),
-        ...(jaPintado ? { dataPintura: serverTimestamp(), dataPM: serverTimestamp() } : {})
-      });
-      avisar(jaPintado ? "Truque registrado (Pintado)!" : "Truque cadastrado para Lavagem.");
-      setTruqueId(''); setColaboradorJateouId(''); setJaPintado(false);
-    } catch (error) { avisar("Erro ao registrar.", "erro"); }
-  };
-
   const avancarParaPintura = async (id: string) => {
     try { await updateDoc(doc(db, 'truques_producao', id), { status: 'pronto_pintura' }); avisar("Liberado para Pintura."); } 
     catch (e) { avisar("Erro ao enviar para pintura.", "erro"); }
   };
 
   const marcarComoPintado = async (id: string) => {
-    try { await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() }); avisar("Pintura Concluída e enviada ao Galpão."); } 
+    try { await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() }); avisar("Enviado ao Galpão."); } 
     catch (e) { avisar("Erro.", "erro"); }
   };
 
   const voltarEtapa = async (id: string, statusAnterior: string) => {
     try { await updateDoc(doc(db, 'truques_producao', id), { status: statusAnterior }); avisar("Peça retornada para a etapa anterior."); } 
-    catch (e) { avisar("Erro ao retornar peça.", "erro"); }
+    catch (e) { avisar("Erro.", "erro"); }
   };
 
-  const aplicarRecontagem = () => {
+  const aplicarRecontagem = async () => {
     const valor = parseInt(novoValorGalpao, 10);
     const todosPintados = truques.filter(t => t.status === 'pintado');
-    if (isNaN(valor) || valor < 0) return avisar("Insira um valor válido para a recontagem.", "erro");
-    if (valor > todosPintados.length) return avisar("O novo valor não pode ser maior que o total real do banco.", "erro");
+    
+    if (isNaN(valor) || valor < 0) return avisar("Insira um valor válido.", "erro");
+    if (valor > todosPintados.length) return avisar("Não pode ser maior que o total real.", "erro");
+
     const quantidadeRemover = todosPintados.length - valor;
-    if (quantidadeRemover === 0) { setIdsOcultos([]); setNovoValorGalpao(''); return avisar("Contagem restaurada para o valor original."); }
-    const embaralhados = [...todosPintados].sort(() => 0.5 - Math.random());
-    setIdsOcultos(embaralhados.slice(0, quantidadeRemover).map(t => t.id)); 
-    setNovoValorGalpao('');
-    avisar(`Contagem ajustada. ${quantidadeRemover} truques removidos visualmente.`);
-  };
-
-  // ============================================================================
-  // ✨ GERADOR DO CHECKLIST EM PAISAGEM (Horizontal) - CORRIGIDO
-  // ============================================================================
-  const renderizarPaginaChecklistHorizontal = (docPdf: jsPDF, truque: any) => {
-    const chk = truque.checklistJateamento;
-    if (!chk) return;
-
-    const dataPreenchimento = chk.dataPreenchimento?.toDate().toLocaleDateString('pt-BR') || "Data Indisponível";
-
-    // --- CABEÇALHO LARGURA TOTAL (X vai de 10 a 287) ---
-    // Proporção corrigida para a logo não esticar (ex: 35x10)
-    try { docPdf.addImage(logoCarvalho, 'PNG', 10, 10, 35, 10); } catch(e){} 
     
-    // Título e Subtítulo centralizados no meio exato da folha A4 Paisagem (148.5mm)
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(13); docPdf.setTextColor(30, 41, 59);
-    docPdf.text("CHECKLIST DE SEGURANÇA JATEAMENTO", 148.5, 14, { align: 'center' });
-    docPdf.setFontSize(10);
-    docPdf.text("DA ARANHA DO TRUQUE TRENS 59500", 148.5, 20, { align: 'center' });
-    
-    // Dados da Plaqueta jogados para o lado direito da folha
-    docPdf.setFontSize(9); docPdf.setFont("helvetica", "bold");
-    docPdf.text(`Data: ${dataPreenchimento} | Plaqueta: ${truque.identificacao}`, 287, 20, { align: 'right' });
-    
-    // Linha divisória ocupando toda a extensão
-    docPdf.setLineWidth(0.4); docPdf.setDrawColor(30, 41, 59);
-    docPdf.line(10, 24, 287, 24); 
-    
-    // --- LADO ESQUERDO: OBJETIVO E TABELA (X de 10 a 145) ---
-    let yEsq = 30; // Descemos um pouco para respirar
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("OBJETIVO", 10, yEsq); yEsq += 4;
-    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
-    const objText = "Estabelecer os procedimentos operacionais seguros para a execução da atividade de jateamento da aranha do truque de trem utilizando poeira metálica para remoção de tinta, visando garantir a integridade física dos trabalhadores, a preservação do meio ambiente e a integridade dos equipamentos.";
-    const splitObj = docPdf.splitTextToSize(objText, 135);
-    docPdf.text(splitObj, 10, yEsq);
-    yEsq += (splitObj.length * 3.5) + 4;
+    if (quantidadeRemover === 0) {
+      avisar("A quantidade já está correta.");
+      return;
+    }
 
-    const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
-    const bodyRespostas = PERGUNTAS_CHECKLIST.map((p, i) => {
-      const resp = chk.respostas[i];
-      return [p, resp === true ? "[ X ]" : "[   ]", resp === false ? "[ X ]" : "[   ]"];
-    });
+    // Identifica quais peças serão "removidas" (ex: movidas para um status 'ajustado' ou 'arquivado')
+    const paraRemover = [...todosPintados].sort(() => 0.5 - Math.random()).slice(0, quantidadeRemover);
 
-    renderTable(docPdf, {
-      startY: yEsq,
-      margin: { left: 10 },
-      tableWidth: 135,
-      head: [["ITENS DE VERIFICAÇÃO", "SIM", "NÃO"]],
-      body: bodyRespostas,
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 2.5 },
-      columnStyles: { 0: { cellWidth: 105 }, 1: { cellWidth: 15, halign: 'center' }, 2: { cellWidth: 15, halign: 'center' } },
-      headStyles: { fillColor: [30, 41, 59] }
-    });
-
-    // --- LINHA DIVISÓRIA CENTRAL ---
-    docPdf.setDrawColor(200, 200, 200);
-    docPdf.setLineWidth(0.2);
-    docPdf.line(150, 28, 150, 200);
-
-    // --- LADO DIREITO: REGRAS E ASSINATURAS (X de 155 a 287) ---
-    let yDir = 30; // Alinhado perfeitamente com o lado esquerdo
-    
-    docPdf.setTextColor(30, 41, 59);
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("OBRIGAÇÕES DO VIGIA", 155, yDir);
-    docPdf.text("OBRIGAÇÕES DO EXECUTANTE", 220, yDir);
-    yDir += 5;
-    
-    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
-    let yVigia = yDir;
-    OBRIGACOES_VIGIA.forEach(txt => {
-      const linhas = docPdf.splitTextToSize(txt, 60);
-      docPdf.text(linhas, 155, yVigia); yVigia += linhas.length * 3.5;
-    });
-
-    let yExec = yDir;
-    OBRIGACOES_EXEC.forEach(txt => {
-      const linhas = docPdf.splitTextToSize(txt, 65);
-      docPdf.text(linhas, 220, yExec); yExec += linhas.length * 3.5;
-    });
-
-    yDir = Math.max(yVigia, yExec) + 6;
-
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("MEDIDAS PREVENTIVAS GERAIS", 155, yDir); yDir += 5;
-    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
-    const medidasText = "1. Exaustão | 2. Distanciamento seguro | 3. Fechamento de cabine | 4. Monitoramento contínuo | 5. Exames específicos para poeiras | 6. EPIs | 7. Inspeções diárias | 8. Evitar improvisos | 9. Uso de válvulas | 10. Sinalização restrita | 11. Descansos | 12. Armazenamento seguro | 13. Verificação de abrasivo.";
-    const splitMedidas = docPdf.splitTextToSize(medidasText, 132);
-    docPdf.text(splitMedidas, 155, yDir); yDir += (splitMedidas.length * 3.5) + 6;
-
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(9);
-    docPdf.text("EPI's E EPC's OBRIGATÓRIOS", 155, yDir); yDir += 5;
-    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(8);
-    const episText = "Capacete de jatista (ar mandado) | Jaqueta couro/raspa | Calça couro/raspa | Luvas cano longo | Proteção pés | Sistema de Exaustão | Compressor e Filtro | Manômetros independentes.";
-    const splitEpis = docPdf.splitTextToSize(episText, 132);
-    docPdf.text(splitEpis, 155, yDir); yDir += (splitEpis.length * 3.5) + 16;
-
-    // Assinaturas (Lado Direito no fundo)
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(10);
-    docPdf.text("ASSINATURA DOS RESPONSÁVEIS PELA EXECUÇÃO", 221, yDir, { align: 'center' }); yDir += 20;
-
-    // Proporções de assinatura corrigidas para 30x12 para não ficarem esmagadas
-    if (chk.assinaturaExecutante) { try { docPdf.addImage(chk.assinaturaExecutante, 'JPEG', 160, yDir - 15, 30, 12); } catch(e){} }
-    docPdf.setDrawColor(0,0,0); docPdf.setLineWidth(0.5); docPdf.line(155, yDir, 215, yDir);
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(8);
-    docPdf.text("ASSINATURA DO EXECUTANTE", 185, yDir + 4, { align: 'center' });
-    docPdf.setFont("helvetica", "normal");
-    docPdf.text(`Nome: ${chk.executanteNome}`, 185, yDir + 8, { align: 'center' });
-
-    if (chk.assinaturaVigia) { try { docPdf.addImage(chk.assinaturaVigia, 'JPEG', 235, yDir - 15, 30, 12); } catch(e){} }
-    docPdf.line(225, yDir, 285, yDir);
-    docPdf.setFont("helvetica", "bold");
-    docPdf.text("ASSINATURA DO VIGIA", 255, yDir + 4, { align: 'center' });
-    docPdf.setFont("helvetica", "normal");
-    docPdf.text(`Nome: ${chk.vigiaNome}`, 255, yDir + 8, { align: 'center' });
-  };
-
-  const baixarChecklistIndividual = (truque: any) => {
-    const docPdf = new jsPDF('l', 'mm', 'a4'); 
-    renderizarPaginaChecklistHorizontal(docPdf, truque);
-    docPdf.save(`Checklist_Jateamento_${truque.identificacao}.pdf`);
-  };
-
-  const baixarChecklistsDaSemana = () => {
-    const seteDiasAtras = new Date();
-    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
-
-    const filtrados = truques.filter(t => {
-      if (!t.checklistJateamento || !t.checklistJateamento.dataPreenchimento) return false;
-      return t.checklistJateamento.dataPreenchimento.toDate() >= seteDiasAtras;
-    });
-
-    if (filtrados.length === 0) return avisar("Nenhum checklist preenchido nos últimos 7 dias.", "erro");
-
-    const docPdf = new jsPDF('l', 'mm', 'a4');
-    filtrados.forEach((t, index) => {
-      if (index > 0) docPdf.addPage();
-      renderizarPaginaChecklistHorizontal(docPdf, t);
-    });
-
-    const dataHoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-    docPdf.save(`Lote_Checklists_Semanal_${dataHoje}.pdf`);
-  };
-
-  // ============================================================================
-  // RELATÓRIO DE PRODUÇÃO (Galpão) - Continua na Vertical (Portrait) e proporção logo corrigida
-  // ============================================================================
-  const gerarRelatorioTruques = () => {
-    const docPdf = new jsPDF('p', 'mm', 'a4');
-    const dataAtual = new Date().toLocaleDateString('pt-BR');
-    try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 35, 10); } catch(e){}
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(16); docPdf.setTextColor(30, 41, 59);
-    docPdf.text("RELATÓRIO DE PRODUÇÃO - TRUQUES", 105, 18, { align: 'center' });
-    docPdf.setFontSize(10); docPdf.setTextColor(100, 100, 100); docPdf.text(`Emissão: ${dataAtual}`, 195, 20, { align: 'right' });
-    docPdf.setLineWidth(0.5); docPdf.line(15, 26, 195, 26);
-    docPdf.setFontSize(11); docPdf.setTextColor(0, 0, 0); docPdf.text("RESUMO DO PÁTIO / GALPÃO", 15, 35);
-    docPdf.setFontSize(10); docPdf.setFont("helvetica", "normal");
-    
-    docPdf.text(`1. Lavagem e Jateamento: ${truquesAguardandoJateamento.length} peça(s)`, 15, 42);
-    docPdf.text(`2. Partículas Magnéticas: ${truquesAguardandoPM.length} peça(s)`, 15, 48);
-    docPdf.text(`3. Setor de Pintura: ${truquesAguardandoPintura.length} peça(s)`, 15, 54);
-    docPdf.text(`4. Pintura Concluída (Galpão): ${truquesConcluidos.length} peça(s)`, 15, 60);
-
-    const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
-    renderTable(docPdf, {
-      startY: 68, head: [["PLAQUETA", "STATUS ATUAL", "COLABORADOR (JAT)"]],
-      body: [
-        ...truquesAguardandoJateamento.map(t => [t.identificacao, 'Lavagem / Jateamento', t.colaboradorJateouNome]),
-        ...truquesAguardandoPM.map(t => [t.identificacao, 'Partículas Magnéticas', t.colaboradorJateouNome]),
-        ...truquesAguardandoPintura.map(t => [t.identificacao, 'Pintura', t.colaboradorJateouNome]),
-        ...truquesConcluidos.map(t => [t.identificacao, 'Concluído (Galpão)', t.colaboradorJateouNome])
-      ],
-      theme: 'grid', styles: { fontSize: 9, cellPadding: 4 }
-    });
-    docPdf.save(`Relatorio_Truques_${dataAtual.replace(/\//g, '-')}.pdf`);
+    try {
+      // Atualiza cada uma no Firebase
+      for (const t of paraRemover) {
+        await updateDoc(doc(db, 'truques_producao', t.id), { 
+          status: 'ajustado_galpao' // Novo status para peças que saíram da contagem
+        });
+      }
+      setNovoValorGalpao('');
+      avisar(`Sucesso! ${quantidadeRemover} peças foram movidas para o inventário.`);
+    } catch (e) {
+      avisar("Erro ao atualizar o banco de dados.", "erro");
+    }
   };
 
   const truquesAguardandoJateamento = truques.filter(t => t.status === 'pronto_jateamento');
@@ -298,36 +86,18 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
       
-      {/* Coluna 1: Cadastro */}
-      <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', height: 'fit-content' }}>
-        <h3 style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 20px 0', color: '#1e293b' }}>
-          <TrainFront size={18} color="#3b82f6" /> Lançar Truque
-        </h3>
-        <form onSubmit={registrarTruque} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div>
-            <label style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Código da Plaquinha *</label>
-            <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
-              <span style={{ padding: '12px 15px', backgroundColor: '#e2e8f0', fontWeight: 'bold' }}>M</span>
-              <input type="text" inputMode="numeric" pattern="[0-9]*" maxLength={3} value={truqueId.replace('M', '')} onChange={e => setTruqueId(e.target.value.replace(/\D/g, '') ? `M${e.target.value.replace(/\D/g, '')}` : '')} placeholder="000" style={{ width: '100%', padding: '12px', border: 'none', background: 'transparent', outline: 'none', fontSize: '16px', fontWeight: 'bold' }} />
-            </div>
-          </div>
-          <Button type="submit" style={{ height: '50px', backgroundColor: '#3b82f6' }}>Iniciar Preparação</Button>
-          
-          <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '10px', paddingTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <Button type="button" onClick={gerarRelatorioTruques} style={{ backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <Printer size={16}/> Resumo de Produção (Galpão)
-            </Button>
-            <Button type="button" onClick={baixarChecklistsDaSemana} style={{ backgroundColor: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <CalendarDays size={16}/> Checklists da Semana (PDF)
-            </Button>
-          </div>
-        </form>
-      </div>
+      {/* 1. MÓDULO LATERAL ISOLADO (FORMULÁRIO E BOTÕES PDF) */}
+      <FormularioLancarTruque 
+        setorAtivo={setorAtivo}
+        avisar={avisar}
+        onGerarRelatorio={() => gerarRelatorioTruques(truquesAguardandoJateamento, truquesAguardandoPM, truquesAguardandoPintura, truquesConcluidos)}
+        onBaixarChecklistsSemana={() => baixarChecklistsDaSemana(truques, avisar)}
+      />
 
-      {/* Coluna 2: Kanban Completo */}
+      {/* 2. COLUNAS DO KANBAN */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        {/* 1. Jateamento */}
+        {/* Coluna Jateamento */}
         <div style={{ backgroundColor: '#f1f5f9', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#334155' }}>1. Lavagem / Jateamento ({truquesAguardandoJateamento.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
@@ -342,7 +112,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           </div>
         </div>
         
-        {/* 2. Partículas Magnéticas */}
+        {/* Coluna PM */}
         <div style={{ backgroundColor: '#fffbeb', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#b45309' }}>2. Partículas Magnéticas (PM) ({truquesAguardandoPM.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
@@ -369,7 +139,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           </div>
         </div>
 
-        {/* 3. Pintura */}
+        {/* Coluna Pintura */}
         <div style={{ backgroundColor: '#eff6ff', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Paintbrush size={18} /> 3. Pintura ({truquesAguardandoPintura.length})
@@ -386,7 +156,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <Button onClick={() => voltarEtapa(t.id, 'analisado_pm')} style={{ backgroundColor: '#f1f5f9', color: '#64748b', padding: '8px 10px' }} title="Voltar para Partículas Magnéticas">
+                  <Button onClick={() => voltarEtapa(t.id, 'analisado_pm')} style={{ backgroundColor: '#f1f5f9', color: '#64748b', padding: '8px 10px' }} title="Voltar para PM">
                     <Undo2 size={16}/>
                   </Button>
                   <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px 12px', flex: 1 }}>
@@ -398,7 +168,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           </div>
         </div>
 
-        {/* 4. Galpão (Concluído) */}
+        {/* Coluna Galpão */}
         <div style={{ backgroundColor: '#f0fdf4', padding: '20px', borderRadius: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h4 style={{ margin: 0, color: '#166534' }}>4. Galpão ({truquesConcluidos.length})</h4>
@@ -414,7 +184,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
                 <span style={{ fontWeight: 'bold', color: '#15803d' }}>{t.identificacao}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {t.checklistJateamento && (
-                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist Original">
+                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist">
                       <FileDown size={18} />
                     </button>
                   )}

@@ -14,6 +14,8 @@ export default function AssinaturaExterna() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
   
+  // 1. Estado adicionado para guardar o nome do assinante
+  const [nomeAssinante, setNomeAssinante] = useState('');
   const [assinado, setAssinado] = useState(false);
   const [abrindoAssinatura, setAbrindoAssinatura] = useState(false);
   const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
@@ -90,7 +92,12 @@ export default function AssinaturaExterna() {
     const base64 = canvasRef.current.toDataURL('image/jpeg', 0.6);
     
     try {
-      const atualizacoes: any = { assinaturaCliente: base64 };
+      // 3. O nome do assinante agora é salvo no banco de dados juntamente com a imagem
+      const atualizacoes: any = { 
+        assinaturaCliente: base64,
+        nomeClienteAssinatura: nomeAssinante 
+      };
+      
       if (os.assinaturaPrestador) atualizacoes.status = 'Concluída';
 
       await updateDoc(doc(db, 'ordens_servico', os.id), atualizacoes);
@@ -202,7 +209,32 @@ export default function AssinaturaExterna() {
             <p style={{ fontSize: '14px', color: '#334155', marginBottom: '20px', lineHeight: '1.5' }}>
               Declaro que os serviços, quantidades e peças listados acima foram devidamente verificados e estão de acordo com o solicitado.
             </p>
-            <Button onClick={() => setAbrindoAssinatura(true)} style={{ width: '100%', height: '60px', fontSize: '16px', backgroundColor: '#3b82f6', display: 'flex', justifyContent: 'center', gap: '10px', fontWeight: 'bold' }}>
+            
+            {/* 2. Formulário adicionado para requerer o nome antes de assinar */}
+            <div style={{ marginBottom: '20px', textAlign: 'left' }}>
+              <label style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
+                Nome do Responsável (Hyundai) *
+              </label>
+              <input 
+                type="text" 
+                value={nomeAssinante} 
+                onChange={(e) => setNomeAssinante(e.target.value)} 
+                placeholder="Ex: João Silva" 
+                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '15px', backgroundColor: '#f8fafc' }}
+              />
+            </div>
+
+            {/* O botão agora exige que o nome seja preenchido para funcionar */}
+            <Button 
+              onClick={() => {
+                if (!nomeAssinante.trim()) {
+                  alert('Por favor, introduza o seu nome para prosseguir.');
+                  return;
+                }
+                setAbrindoAssinatura(true);
+              }} 
+              style={{ width: '100%', height: '60px', fontSize: '16px', backgroundColor: nomeAssinante.trim() ? '#3b82f6' : '#94a3b8', display: 'flex', justifyContent: 'center', gap: '10px', fontWeight: 'bold', transition: '0.3s' }}
+            >
               <FileSignature size={22} /> Prosseguir para Assinatura
             </Button>
           </div>
@@ -218,7 +250,7 @@ export default function AssinaturaExterna() {
              ) : (
                <>
                  <div style={{ padding: '15px 20px', backgroundColor: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                   <h3 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>Assinatura: Hyundai Rotem Brasil</h3>
+                   <h3 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>Assinatura: {nomeAssinante} (Hyundai)</h3>
                    <button onClick={() => setAbrindoAssinatura(false)} style={{ background: '#f1f5f9', border: 'none', padding: '8px', borderRadius: '50%' }}><X size={20}/></button>
                  </div>
                  
