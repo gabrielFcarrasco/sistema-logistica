@@ -9,7 +9,6 @@ interface Props {
   titulo: string;
   isPortrait: boolean;
   onClose: () => void;
-  // AVISO: onSave agora devolve duas strings: a imagem (base64) e o nome digitado!
   onSave: (base64: string, nomeDigitado: string) => void; 
 }
 
@@ -17,10 +16,7 @@ export default function ModalAssinatura({ aberto, titulo, isPortrait, onClose, o
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const desenhandoRef = useRef(false);
   
-  // ✨ NOVO ESTADO: Guarda o nome da pessoa que está a assinar
   const [nomeAssinante, setNomeAssinante] = useState('');
-  
-  // ✨ NOVO ESTADO: Controla se mostramos primeiro o formulário de nome ou já a tela de desenho
   const [etapa, setEtapa] = useState<'pedirNome' | 'desenhar'>('pedirNome');
 
   useEffect(() => {
@@ -37,10 +33,19 @@ export default function ModalAssinatura({ aberto, titulo, isPortrait, onClose, o
     if (!ctx) return;
     
     setTimeout(() => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // ✨ CORREÇÃO: Usar a densidade de pixeis do ecrã para evitar serrilhados (Qualidade HD)
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = canvas.offsetWidth * ratio;
+      canvas.height = canvas.offsetHeight * ratio;
+      ctx.scale(ratio, ratio);
+      
+      ctx.fillStyle = '#ffffff'; 
+      ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+      
+      ctx.strokeStyle = '#0f172a'; 
+      ctx.lineWidth = 3; 
+      ctx.lineCap = 'round'; 
+      ctx.lineJoin = 'round';
     }, 100);
 
     const getPos = (e: any) => {
@@ -65,13 +70,17 @@ export default function ModalAssinatura({ aberto, titulo, isPortrait, onClose, o
 
   const limparCanvas = () => {
     const canvas = canvasRef.current; const ctx = canvas?.getContext('2d');
-    if (ctx && canvas) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height); desenhandoRef.current = false; }
+    if (ctx && canvas) { 
+      ctx.fillStyle = '#ffffff'; 
+      ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight); 
+      desenhandoRef.current = false; 
+    }
   };
 
   const confirmar = () => {
     if (!canvasRef.current) return;
-    const base64 = canvasRef.current.toDataURL('image/jpeg', 0.6);
-    // ✨ Agora enviamos o base64 E o nome digitado!
+    // ✨ CORREÇÃO: Aumentada a qualidade da exportação JPEG
+    const base64 = canvasRef.current.toDataURL('image/jpeg', 0.8);
     onSave(base64, nomeAssinante);
   };
 
@@ -80,7 +89,6 @@ export default function ModalAssinatura({ aberto, titulo, isPortrait, onClose, o
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.95)', zIndex: 20000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       
-      {/* ETAPA 1: Pede o nome antes de desenhar */}
       {etapa === 'pedirNome' && (
         <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '90%', maxWidth: '400px', textAlign: 'center' }}>
           <h2 style={{ color: '#1e293b', fontSize: '20px', marginBottom: '10px' }}>{titulo}</h2>
@@ -110,7 +118,6 @@ export default function ModalAssinatura({ aberto, titulo, isPortrait, onClose, o
         </div>
       )}
 
-      {/* ETAPA 2: Tela de Desenho (igual ao que já existia) */}
       {etapa === 'desenhar' && (
         <>
           {isPortrait ? (
