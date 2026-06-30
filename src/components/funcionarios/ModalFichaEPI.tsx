@@ -277,3 +277,4 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque, 
     </div>
   );
 }
+
