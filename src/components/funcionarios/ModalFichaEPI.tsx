@@ -73,7 +73,7 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque, 
       doc.text("FICHA DE CONTROLE DE FORNECIMENTO", 105, 14, { align: 'center' });
       
       doc.setFontSize(10);
-      doc.text("EQUIPAMENTOS DE PROTEÇÃO INDIVIDUAL E UNIFORMES", 105, 19, { align: 'center' });[span_0](start_span)[span_0](end_span)
+      doc.text("EQUIPAMENTOS DE PROTEÇÃO INDIVIDUAL E UNIFORMES", 105, 19, { align: 'center' });
       
       doc.setLineWidth(0.4); 
       doc.setDrawColor(azulCorporativo[0], azulCorporativo[1], azulCorporativo[2]);
@@ -88,10 +88,10 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque, 
       doc.setTextColor(0, 0, 0);
       
       // Coluna Esquerda
-      doc.setFont("helvetica", "bold"); doc.text("Nome do Funcionário:", 18, 32);[span_1](start_span)[span_1](end_span)
+      doc.setFont("helvetica", "bold"); doc.text("Nome do Funcionário:", 18, 32);
       doc.setFont("helvetica", "normal"); doc.text(funcionario.nome.toUpperCase(), 50, 32);
       
-      doc.setFont("helvetica", "bold"); doc.text("Cargo / Função:", 18, 38);[span_2](start_span)[span_2](end_span)
+      doc.setFont("helvetica", "bold"); doc.text("Cargo / Função:", 18, 38);
       doc.setFont("helvetica", "normal"); doc.text(funcionario.funcao?.toUpperCase() || "NÃO INFORMADO", 42, 38);
       
       doc.setFont("helvetica", "bold"); doc.text("CPF:", 18, 44);
@@ -99,10 +99,10 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque, 
 
       // Coluna Direita
       const [anoRef, mesRef] = mesReferencia.split('-');
-      doc.setFont("helvetica", "bold"); doc.text("Mês de Referência:", 130, 32);[span_3](start_span)[span_3](end_span)
+      doc.setFont("helvetica", "bold"); doc.text("Mês de Referência:", 130, 32);
       doc.setFont("helvetica", "normal"); doc.text(`${mesRef}/${anoRef}`, 158, 32);
 
-      doc.setFont("helvetica", "bold"); doc.text("Registro / Matrícula:", 130, 38);[span_4](start_span)[span_4](end_span)
+      doc.setFont("helvetica", "bold"); doc.text("Registro / Matrícula:", 130, 38);
       doc.setFont("helvetica", "normal"); doc.text(funcionario.matricula || "NÃO INFORMADO", 160, 38);
 
       // --- 3. TERMOS LEGAIS E CIENTES (NR-6) ---
@@ -110,21 +110,21 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque, 
       doc.setFontSize(7.5);
       
       doc.setFont("helvetica", "bold"); 
-      doc.text("Declaro:", 15, yText); yText += 4;[span_5](start_span)[span_5](end_span)
+      doc.text("Declaro:", 15, yText); yText += 4;
       doc.setFont("helvetica", "normal");
-      const termoPrincipal = "Declaro ter recebido da Carvalho Pintura e Montagem, os equipamentos de proteção individual abaixo, fornecidos gratuitamente, para meu uso, de acordo com as normas de segurança. Comprometo-me a utilizá-los apenas para a finalidade a que se destinam e a conservá-los em perfeito estado, realizando a higienização quando necessário, e reportando ao responsável qualquer dano ou extravio.";[span_6](start_span)[span_6](end_span)
+      const termoPrincipal = "Declaro ter recebido da Carvalho Pintura e Montagem, os equipamentos de proteção individual abaixo, fornecidos gratuitamente, para meu uso, de acordo com as normas de segurança. Comprometo-me a utilizá-los apenas para a finalidade a que se destinam e a conservá-los em perfeito estado, realizando a higienização quando necessário, e reportando ao responsável qualquer dano ou extravio.";
       const linhasTermo = doc.splitTextToSize(termoPrincipal, 180);
       doc.text(linhasTermo, 15, yText, { align: 'justify' }); yText += (linhasTermo.length * 3.5) + 4;
 
       doc.setFont("helvetica", "bold"); 
-      doc.text("ESTOU CIENTE:", 15, yText); yText += 4;[span_7](start_span)[span_7](end_span)
+      doc.text("ESTOU CIENTE:", 15, yText); yText += 4;
       doc.setFont("helvetica", "normal");
       
       const cientes = [
-        "1. Que o não fornecimento do EPI ou a recusa em utilizá-lo de acordo com as orientações da Carvalho Pintura e Montagem e da legislação (NR-06 e NR-18), bem como outras Normas Regulamentadoras, poderá resultar em Penalidades.",[span_8](start_span)[span_8](end_span)
-        "2. Do recebimento gratuito e da importância dos EPI's fornecidos pela empresa, cuja não utilização pode implicar riscos à saúde e segurança.",[span_9](start_span)[span_9](end_span)
-        "3. Dos equipamentos fornecidos pela empresa.",[span_10](start_span)[span_10](end_span)
-        "4. Que a utilização dos EPI's não desobriga o cumprimento das normas, deveres e obrigações de prevenção de acidentes previstas na legislação vigente.[span_11](start_span)"[span_11](end_span)
+        "1. Que o não fornecimento do EPI ou a recusa em utilizá-lo de acordo com as orientações da Carvalho Pintura e Montagem e da legislação (NR-06 e NR-18), bem como outras Normas Regulamentadoras, poderá resultar em Penalidades.",
+        "2. Do recebimento gratuito e da importância dos EPI's fornecidos pela empresa, cuja não utilização pode implicar riscos à saúde e segurança.",
+        "3. Dos equipamentos fornecidos pela empresa.",
+        "4. Que a utilização dos EPI's não desobriga o cumprimento das normas, deveres e obrigações de prevenção de acidentes previstas na legislação vigente."
       ];
 
       cientes.forEach(item => {
@@ -153,7 +153,7 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque, 
 
       autoTablePlugin(doc, {
         startY: startYTable,
-        head: [["Data Entrega", "Qtd.", "Tam.", "Nome do EPI / Uniforme", "C.A.", "Assinatura", "Devolução"]],[span_12](start_span)[span_12](end_span)
+        head: [["Data Entrega", "Qtd.", "Tam.", "Nome do EPI / Uniforme", "C.A.", "Assinatura", "Devolução"]],
         body: bodyData,
         theme: 'grid',
         styles: { 
@@ -277,4 +277,3 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque, 
     </div>
   );
 }
-
