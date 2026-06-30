@@ -323,7 +323,8 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
       {/* RENDERIZAÇÃO DOS MODAIS DE DOCUMENTOS */}
       <ModalTermo 
         aberto={modalTermoAberto} 
-        funcionario={fichaAberta} 
+        funcionario={fichaAberta}
+        estoque={estoque} 
         onClose={() => setModalTermoAberto(false)} 
         avisar={avisar} 
       />
