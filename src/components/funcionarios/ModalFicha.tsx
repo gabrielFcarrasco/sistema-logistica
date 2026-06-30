@@ -6,8 +6,9 @@ import { X, UserPlus, AlertTriangle, Lock, Edit3, Shirt, UserMinus, UserCheck, A
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 
-// ✨ IMPORTAÇÃO DO NOVO MODAL DE TERMO DE COMPROMISSO
 import ModalTermo from './ModalTermo';
+// ✨ NOVO: Importação do modal da Ficha de EPI
+import ModalFichaEPI from './ModalFichaEPI';
 
 interface Props {
   funcionarioAberta: any;
@@ -35,8 +36,9 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
   const [cpfEdit, setCpfEdit] = useState('');
   const [rgEdit, setRgEdit] = useState('');
 
-  // ✨ CONTROLE DO MODAL DE TERMO
   const [modalTermoAberto, setModalTermoAberto] = useState(false);
+  // ✨ NOVO: Controle de abertura do Modal da Ficha de EPI
+  const [modalEPIAberto, setModalEPIAberto] = useState(false);
 
   useEffect(() => { setFichaAberta(funcionarioAberta); }, [funcionarioAberta]);
 
@@ -60,19 +62,13 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
 
   const alternarStatusFuncionario = async () => {
     const isDesligando = fichaAberta.status !== 'desligado';
-    const msg = isDesligando 
-      ? `Atenção: Deseja DESLIGAR ${fichaAberta.nome}?\nO BD irá ignorá-lo totalmente e ele não aparecerá em mais nenhuma lista do sistema.`
-      : `Deseja REATIVAR o colaborador ${fichaAberta.nome} no sistema?`;
-
+    const msg = isDesligando ? `Atenção: Deseja DESLIGAR ${fichaAberta.nome}?` : `Deseja REATIVAR o colaborador?`;
     if (!confirm(msg)) return;
 
     try {
-      await updateDoc(doc(db, 'funcionarios', fichaAberta.id), {
-        status: isDesligando ? 'desligado' : 'ativo',
-        dataDesligamento: isDesligando ? serverTimestamp() : null
-      });
+      await updateDoc(doc(db, 'funcionarios', fichaAberta.id), { status: isDesligando ? 'desligado' : 'ativo', dataDesligamento: isDesligando ? serverTimestamp() : null });
       setFichaAberta({ ...fichaAberta, status: isDesligando ? 'desligado' : 'ativo' });
-      avisar(isDesligando ? "Colaborador Desligado e Ocultado." : "Colaborador Reativado!");
+      avisar(isDesligando ? "Colaborador Desligado." : "Colaborador Reativado!");
     } catch (error) { avisar("Erro ao atualizar o status.", "erro"); }
   };
 
@@ -166,14 +162,19 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
               )}
             </div>
 
-            {/* ✨ AQUI ESTÁ O BOTÃO DE DOCUMENTAÇÃO FORMAL (TERMO) */}
+            {/* ✨ DOCUMENTAÇÃO FORMAL - AGORA COM DOIS BOTÕES */}
             <div style={{ marginBottom: '25px', paddingBottom: '20px', borderBottom: '1px solid #e2e8f0' }}>
               <h4 style={{ fontSize: '13px', color: '#1e293b', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <FileSignature size={16} color="#0ea5e9" /> DOCUMENTAÇÃO FORMAL
               </h4>
-              <Button onClick={() => setModalTermoAberto(true)} style={{ width: '100%', height: '45px', backgroundColor: '#f0f9ff', color: '#0ea5e9', border: '1px solid #bae6fd', fontSize: '13px', fontWeight: 'bold' }}>
-                Emitir Termo de Compromisso
-              </Button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <Button onClick={() => setModalTermoAberto(true)} style={{ width: '100%', height: '45px', backgroundColor: '#f0f9ff', color: '#0ea5e9', border: '1px solid #bae6fd', fontSize: '13px', fontWeight: 'bold' }}>
+                  Emitir Termo de Compromisso
+                </Button>
+                <Button onClick={() => setModalEPIAberto(true)} style={{ width: '100%', height: '45px', backgroundColor: '#f0fdf4', color: '#10b981', border: '1px solid #bbf7d0', fontSize: '13px', fontWeight: 'bold' }}>
+                  Emitir Ficha de EPI (Histórico)
+                </Button>
+              </div>
             </div>
 
             <h4 style={{ fontSize: '13px', color: '#1e293b', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '6px' }}><Shirt size={16} color="#3b82f6" /> MEDIDAS DO COLABORADOR</h4>
@@ -195,15 +196,7 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
               <h4 style={{ fontSize: '13px', color: '#1e293b', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <UserMinus size={16} color="#ef4444" /> ADMISSÃO E RESCISÃO
               </h4>
-              <Button 
-                onClick={alternarStatusFuncionario} 
-                style={{ 
-                  width: '100%', height: '45px', 
-                  backgroundColor: fichaAberta.status === 'desligado' ? '#10b981' : '#fee2e2', 
-                  color: fichaAberta.status === 'desligado' ? 'white' : '#ef4444', 
-                  border: fichaAberta.status === 'desligado' ? 'none' : '1px solid #f87171' 
-                }}
-              >
+              <Button onClick={alternarStatusFuncionario} style={{ width: '100%', height: '45px', backgroundColor: fichaAberta.status === 'desligado' ? '#10b981' : '#fee2e2', color: fichaAberta.status === 'desligado' ? 'white' : '#ef4444', border: fichaAberta.status === 'desligado' ? 'none' : '1px solid #f87171' }}>
                 {fichaAberta.status === 'desligado' ? <><UserCheck size={16} style={{marginRight: '6px'}}/> Reativar Colaborador</> : <><Archive size={16} style={{marginRight: '6px'}}/> Desligar Colaborador</>}
               </Button>
             </div>
@@ -265,8 +258,6 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
 
             {/* TREINAMENTOS E DSS (LADO A LADO NA TELA GRANDE) */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-              
-              {/* BLOCO: TREINAMENTOS */}
               <div>
                 <div style={{ borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', marginBottom: '15px' }}>
                   <h4 style={{ fontSize: '14px', color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -275,26 +266,20 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
                 </div>
                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                   {treinamentosGlobais.filter(t => t.participantes?.some((p:any) => p.funcionarioId === fichaAberta.id)).length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-                      <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Nenhum treinamento.</p>
-                    </div>
+                    <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}><p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Nenhum treinamento.</p></div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {treinamentosGlobais
-                        .filter(t => t.participantes?.some((p:any) => p.funcionarioId === fichaAberta.id))
-                        .map(treino => (
+                      {treinamentosGlobais.filter(t => t.participantes?.some((p:any) => p.funcionarioId === fichaAberta.id)).map(treino => (
                           <div key={treino.id} style={{ display: 'flex', flexDirection: 'column', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#faf5ff' }}>
                             <strong style={{ fontSize: '13px', color: '#4c1d95' }}>{treino.titulo}</strong>
                             <span style={{ fontSize: '11px', color: '#7c3aed' }}>{new Date(`${treino.data}T12:00:00`).toLocaleDateString('pt-BR')} - {treino.cargaHoraria}h</span>
                           </div>
-                        ))
-                      }
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* BLOCO: DSS */}
               <div>
                 <div style={{ borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', marginBottom: '15px' }}>
                   <h4 style={{ fontSize: '14px', color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -303,32 +288,25 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
                 </div>
                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                   {dssGlobais.filter(d => d.participantes?.some((p:any) => p.funcionarioId === fichaAberta.id)).length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-                      <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Nenhum DSS.</p>
-                    </div>
+                    <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}><p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Nenhum DSS.</p></div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {dssGlobais
-                        .filter(d => d.participantes?.some((p:any) => p.funcionarioId === fichaAberta.id))
-                        .map(dss => (
+                      {dssGlobais.filter(d => d.participantes?.some((p:any) => p.funcionarioId === fichaAberta.id)).map(dss => (
                           <div key={dss.id} style={{ display: 'flex', flexDirection: 'column', padding: '10px', border: '1px solid #e0f2fe', borderRadius: '8px', backgroundColor: '#f0f9ff' }}>
                             <strong style={{ fontSize: '13px', color: '#0369a1' }}>{dss.tema}</strong>
                             <span style={{ fontSize: '11px', color: '#0284c7' }}>{new Date(`${dss.data}T12:00:00`).toLocaleDateString('pt-BR')} - {dss.lider}</span>
                           </div>
-                        ))
-                      }
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
-
             </div>
 
           </div>
         </div>
       </div>
 
-      {/* 🔐 MODAL DE SENHA INTERNO À FICHA */}
       {modalSenhaAberto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.95)', zIndex: 11000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '350px', textAlign: 'center' }}>
@@ -342,11 +320,20 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
         </div>
       )}
 
-      {/* ✨ RENDEREZIA O MODAL DO TERMO DE COMPROMISSO AQUI DENTRO DA FICHA */}
+      {/* RENDERIZAÇÃO DOS MODAIS DE DOCUMENTOS */}
       <ModalTermo 
         aberto={modalTermoAberto} 
         funcionario={fichaAberta} 
         onClose={() => setModalTermoAberto(false)} 
+        avisar={avisar} 
+      />
+
+      {/* ✨ RENDERIZAÇÃO DA NOSSA NOVA FICHA DE EPI */}
+      <ModalFichaEPI 
+        aberto={modalEPIAberto} 
+        funcionario={fichaAberta} 
+        entregas={historicoEntregas}
+        onClose={() => setModalEPIAberto(false)} 
         avisar={avisar} 
       />
 

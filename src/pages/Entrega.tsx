@@ -1,83 +1,56 @@
 // src/pages/Entrega.tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { 
-  collection, onSnapshot, query, where, addDoc, doc, 
-  updateDoc, getDoc, serverTimestamp, getDocs 
-} from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, doc, updateDoc, getDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { 
-  ClipboardSignature, CheckCircle2, AlertCircle, 
-  PenTool, Plus, ShoppingCart, Trash2, X, AlertTriangle, Shirt, Smartphone, UserCheck 
-} from 'lucide-react';
+import { ClipboardSignature, CheckCircle2, AlertCircle, PenTool, Plus, ShoppingCart, Trash2, Shirt, UserCheck, HardHat, Building2 } from 'lucide-react';
+
+import ModalJustificativa from '../components/entrega/ModalJustificativa';
+import ModalAssinaturaEntrega from '../components/entrega/ModalAssinaturaEntrega';
 
 interface ItemCarrinho {
-  id: string;
-  nome: string;
-  quantidade: number;
-  estoqueDisponivel?: number;
-  durabilidade: number;
-  justificativa?: string;
-  isPendencia?: boolean;
-  pendenciaId?: string;
+  id: string; nome: string; quantidade: number; durabilidade: number;
+  justificativa?: string; isPendencia?: boolean; pendenciaId?: string;
+  isExterno?: boolean; caExterno?: string; nomeOriginalExterno?: string;
 }
-
-const JUSTIFICATIVAS_PADRAO = [
-  "Dano em serviço (Rasgou/Quebrou)",
-  "Extravio / Perda",
-  "Desgaste prematuro (Material ruim)",
-  "Tamanho incorreto / Troca",
-  "Roubo / Furto",
-  "Defeito de fábrica"
-];
 
 export default function Entrega() {
   const { setorAtivo } = useOutletContext<{ setorAtivo: string }>();
   
-  const [recebedores, setRecebedores] = useState<any[]>([]); // Lista combinada de funcionários e sócios
+  const [recebedores, setRecebedores] = useState<any[]>([]); 
   const [estoque, setEstoque] = useState<any[]>([]);
   const [recebedorSelecionado, setRecebedorSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   
+  // ✨ NOVOS ESTADOS: Gestão de EPIs Externos
+  const [origemEpi, setOrigemEpi] = useState<'interno' | 'externo'>('interno');
+  const [episExternosSugeridos, setEpisExternosSugeridos] = useState<any[]>([]);
+  const [nomeExterno, setNomeExterno] = useState('');
+  const [caExterno, setCaExterno] = useState('');
+
   const [itemSelecionado, setItemSelecionado] = useState('');
   const [quantidadeDesejada, setQuantidadeDesejada] = useState('1');
   const [durabilidadeManual, setDurabilidadeManual] = useState('');
   const [pendenciasFuncionario, setPendenciasFuncionario] = useState<any[]>([]);
 
   const [itemPendenteJustificativa, setItemPendenteJustificativa] = useState<any>(null);
-  const [justificativaSelecionada, setJustificativaSelecionada] = useState('');
-
-  // ✍️ ESTADOS DA ASSINATURA
   const [modalAssinaturaAberto, setModalAssinaturaAberto] = useState(false);
   const [assinaturaBase64, setAssinaturaBase64] = useState('');
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [estaDesenhandoUI, setEstaDesenhandoUI] = useState(false);
-  const desenhandoRef = useRef(false);
-  const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
 
   const [notificacao, setNotificacao] = useState<{msg: string, tipo: 'sucesso' | 'erro'} | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   const avisar = (msg: string, tipo: 'sucesso' | 'erro' = 'sucesso') => {
-    setNotificacao({ msg, tipo });
-    setTimeout(() => setNotificacao(null), 4000);
+    setNotificacao({ msg, tipo }); setTimeout(() => setNotificacao(null), 4000);
   };
 
-  // 1. Carrega Funcionários e Sócios
   useEffect(() => {
     if (!setorAtivo) return;
-
-   // Escuta Funcionários do Setor
     const unsubFunc = onSnapshot(query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo)), (snapFunc) => {
-      // ✨ MÁGICA AQUI: O .filter() ignora totalmente qualquer um que esteja desligado
-      const funcs = snapFunc.docs
-        .map(d => ({ id: d.id, ...d.data(), tipo: 'funcionario' }))
-        .filter((f: any) => f.status !== 'desligado'); 
-      
-      // Escuta Sócios (Universal)
+      const funcs = snapFunc.docs.map(d => ({ id: d.id, ...d.data(), tipo: 'funcionario' })).filter((f: any) => f.status !== 'desligado'); 
       onSnapshot(query(collection(db, 'usuarios'), where('nivel', '==', 'socio')), (snapSocios) => {
         const socios = snapSocios.docs.map(d => ({ id: d.id, ...d.data(), tipo: 'socio' }));
         setRecebedores([...funcs, ...socios]);
@@ -85,86 +58,90 @@ export default function Entrega() {
     });
     
     const unsubEstoque = onSnapshot(query(collection(db, 'estoque'), where('setorId', '==', setorAtivo)), (snap) => {
-      const itensFiltrados = snap.docs
-        .map(d => ({ id: d.id, ...d.data() } as any))
-        .filter(i => i.quantidade > 0 && i.categoria?.toLowerCase() !== 'pintura'); 
+      const itensFiltrados = snap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter(i => i.quantidade > 0 && i.categoria?.toLowerCase() !== 'pintura'); 
       setEstoque(itensFiltrados);
     });
 
-    return () => { unsubFunc(); unsubEstoque(); }
+    // ✨ NOVO: Escutar os EPIs externos já registados na base de dados
+    const unsubExternos = onSnapshot(collection(db, 'epis_externos'), (snap) => {
+      setEpisExternosSugeridos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsubFunc(); unsubEstoque(); unsubExternos(); }
   }, [setorAtivo]);
 
-  // 2. Lógica para Sócios: Assinatura Automática
   useEffect(() => {
     const selecao = recebedores.find(r => r.id === recebedorSelecionado);
-    if (selecao?.tipo === 'socio') {
-      setAssinaturaBase64('ASSINATURA DIGITAL (SÓCIO)'); // Preenche automático
-    } else {
-      setAssinaturaBase64(''); // Limpa se for funcionário comum
-    }
+    if (selecao?.tipo === 'socio') setAssinaturaBase64('ASSINATURA DIGITAL (SÓCIO)');
+    else setAssinaturaBase64('');
   }, [recebedorSelecionado, recebedores]);
 
-  // 3. Busca Pendências (Apenas se for funcionário comum)
   useEffect(() => {
-    if (!recebedorSelecionado) {
-      setPendenciasFuncionario([]);
-      return;
-    }
+    if (!recebedorSelecionado) return setPendenciasFuncionario([]);
     const selecao = recebedores.find(r => r.id === recebedorSelecionado);
     if (selecao?.tipo !== 'funcionario') return;
 
-    const q = query(
-      collection(db, 'entregas_pendentes'),
-      where('funcionarioId', '==', recebedorSelecionado),
-      where('status', '==', 'aguardando_chegada')
-    );
+    const q = query(collection(db, 'entregas_pendentes'), where('funcionarioId', '==', recebedorSelecionado), where('status', '==', 'aguardando_chegada'));
     const unsub = onSnapshot(q, (snap) => setPendenciasFuncionario(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => unsub();
   }, [recebedorSelecionado, recebedores]);
 
   useEffect(() => {
-    if (itemSelecionado) {
+    if (itemSelecionado && origemEpi === 'interno') {
       const item = estoque.find(i => i.id === itemSelecionado);
       setDurabilidadeManual(item?.durabilidadeSugerida?.toString() || '');
     }
-  }, [itemSelecionado, estoque]);
+  }, [itemSelecionado, estoque, origemEpi]);
 
-  useEffect(() => {
-    const handleResize = () => setIsPortrait(window.innerHeight > window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  // ✨ NOVO: Auto-preenche o CA se o EPI externo já existir na base de dados
+  const handleSelectExterno = (nome: string) => {
+    setNomeExterno(nome);
+    const existente = episExternosSugeridos.find(e => e.nome.toLowerCase() === nome.toLowerCase());
+    if (existente) setCaExterno(existente.ca || '');
+  };
 
   const calcularDiasDeUso = (dataAnterior: Date) => {
-    const agora = new Date();
-    const diffMs = agora.getTime() - dataAnterior.getTime();
+    const diffMs = new Date().getTime() - dataAnterior.getTime();
     const diffHoras = diffMs / (1000 * 60 * 60);
-    if (diffHoras < 7) return 0; 
-    return Math.ceil(diffHoras / 24);
+    return diffHoras < 7 ? 0 : Math.ceil(diffHoras / 24);
   };
 
   const verificarEAdicionar = async () => {
-    if (!recebedorSelecionado || !itemSelecionado) return avisar("Selecione recebedor e material.", "erro");
+    if (!recebedorSelecionado) return avisar("Selecione o recebedor.", "erro");
     if (Number(quantidadeDesejada) <= 0) return avisar("A quantidade deve ser maior que zero.", "erro");
     
+    // ✨ LÓGICA PARA EPI EXTERNO
+    if (origemEpi === 'externo') {
+      if (!nomeExterno.trim()) return avisar("Digite o nome do EPI do cliente.", "erro");
+      
+      setCarrinho([...carrinho, {
+        id: `ext-${Date.now()}`,
+        nome: `[HYUNDAI] ${nomeExterno}`,
+        quantidade: Number(quantidadeDesejada) || 1,
+        durabilidade: Number(durabilidadeManual) || 0,
+        isExterno: true,
+        caExterno: caExterno,
+        nomeOriginalExterno: nomeExterno
+      }]);
+      
+      setNomeExterno(''); setCaExterno(''); setQuantidadeDesejada('1'); setDurabilidadeManual('');
+      return;
+    }
+
+    // LÓGICA PARA ESTOQUE INTERNO
+    if (!itemSelecionado) return avisar("Selecione o material.", "erro");
     const itemData = estoque.find(i => i.id === itemSelecionado);
     const durabilidadeDesejada = Number(durabilidadeManual) || 0;
     const selecao = recebedores.find(r => r.id === recebedorSelecionado);
 
-    // 🛑 REGRA PARA SÓCIO: Pula verificação de vigia
-    if (selecao?.tipo === 'socio') {
-      adicionarAoCarrinho(itemData, durabilidadeDesejada);
-      return;
-    }
+    if (selecao?.tipo === 'socio') return adicionarAoCarrinho(itemData, durabilidadeDesejada);
 
     try {
       const q = query(collection(db, 'entregas'), where('funcionarioId', '==', recebedorSelecionado), where('itemId', '==', itemSelecionado));
       const snap = await getDocs(q);
       
       if (!snap.empty) {
-        const entregas = snap.docs.map(d => d.data());
-        entregas.sort((a, b) => (b.dataHora?.toMillis() || 0) - (a.dataHora?.toMillis() || 0));
-
+        const entregas = snap.docs.map(d => d.data()).sort((a, b) => (b.dataHora?.toMillis() || 0) - (a.dataHora?.toMillis() || 0));
         const ultima = entregas[0];
         const dataUltima = ultima.dataHora?.toDate();
         
@@ -184,137 +161,70 @@ export default function Entrega() {
         }
       }
       adicionarAoCarrinho(itemData, durabilidadeDesejada);
-    } catch (error) {
-      adicionarAoCarrinho(itemData, durabilidadeDesejada);
-    }
+    } catch (error) { adicionarAoCarrinho(itemData, durabilidadeDesejada); }
   };
 
   const adicionarAoCarrinho = (itemData: any, dur: number, just?: string, isPendencia = false, pendId?: string) => {
     setCarrinho([...carrinho, { 
-      id: itemData.id || `p-${Date.now()}`, 
-      nome: itemData.nome || itemData.itemNome, 
-      quantidade: isPendencia ? 1 : (Number(quantidadeDesejada) || 1),
-      durabilidade: dur,
-      justificativa: just,
-      isPendencia,
-      pendenciaId: pendId
+      id: itemData.id || `p-${Date.now()}`, nome: itemData.nome || itemData.itemNome, 
+      quantidade: isPendencia ? 1 : (Number(quantidadeDesejada) || 1), durabilidade: dur, justificativa: just, isPendencia, pendenciaId: pendId
     }]);
-    
     setItemSelecionado(''); setDurabilidadeManual(''); setQuantidadeDesejada('1');
-    setItemPendenteJustificativa(null); setJustificativaSelecionada('');
+    setItemPendenteJustificativa(null);
   };
 
   const finalizarEntregaTotal = async () => {
     if (!assinaturaBase64 || carrinho.length === 0) return avisar("Faltam dados.", "erro");
     setSalvando(true);
-    
     try {
       const horarioAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       const selecao = recebedores.find(r => r.id === recebedorSelecionado);
 
       for (const item of carrinho) {
+        
+        // ✨ Se for um EPI externo novo, regista-o na coleção de sugestões
+        if (item.isExterno) {
+          const existe = episExternosSugeridos.find(e => e.nome.toLowerCase() === item.nomeOriginalExterno?.toLowerCase());
+          if (!existe) {
+            await addDoc(collection(db, 'epis_externos'), { 
+              nome: item.nomeOriginalExterno, 
+              ca: item.caExterno || '' 
+            });
+          }
+        }
+
+        // Regista a entrega para a Ficha de EPI
         await addDoc(collection(db, 'entregas'), {
-          setorId: setorAtivo,
-          funcionarioId: recebedorSelecionado,
+          setorId: setorAtivo, 
+          funcionarioId: recebedorSelecionado, 
           funcionarioNome: selecao.nome,
-          itemId: item.id,
-          itemNome: item.nome,
-          quantidade: item.quantidade,
+          itemId: item.id, 
+          itemNome: item.nome, 
+          quantidade: item.quantidade, 
           durabilidade: item.durabilidade,
-          justificativa: item.justificativa || "Retirada Sócio / Normal",
+          ca: item.isExterno ? item.caExterno : undefined, // Regista o CA para sair no PDF
+          origem: item.isExterno ? 'externa_cliente' : 'estoque_interno',
+          justificativa: item.justificativa || (item.isExterno ? "EPI Cedido pelo Cliente" : "Retirada Normal"),
           assinatura: assinaturaBase64, 
-          dataHora: serverTimestamp(),
-          horarioEntrega: horarioAgora,
-          recebedorTipo: selecao.tipo // Salva se foi sócio ou funcionário
+          dataHora: serverTimestamp(), 
+          horarioEntrega: horarioAgora, 
+          recebedorTipo: selecao.tipo
         });
 
-        if (item.isPendencia && item.pendenciaId) {
-          await updateDoc(doc(db, 'entregas_pendentes', item.pendenciaId), { status: 'entregue', entregueEm: serverTimestamp() });
-        } else {
-          const itemRef = doc(db, 'estoque', item.id);
-          const itemDoc = await getDoc(itemRef);
-          await updateDoc(itemRef, { 
-            quantidade: (itemDoc.data()?.quantidade || 0) - item.quantidade,
-            durabilidadeSugerida: item.durabilidade 
-          });
+        // Apenas baixa no estoque se for material interno
+        if (!item.isExterno) {
+          if (item.isPendencia && item.pendenciaId) {
+            await updateDoc(doc(db, 'entregas_pendentes', item.pendenciaId), { status: 'entregue', entregueEm: serverTimestamp() });
+          } else {
+            const itemRef = doc(db, 'estoque', item.id);
+            const itemDoc = await getDoc(itemRef);
+            await updateDoc(itemRef, { quantidade: (itemDoc.data()?.quantidade || 0) - item.quantidade, durabilidadeSugerida: item.durabilidade });
+          }
         }
       }
-      avisar("Processo finalizado!");
-      setCarrinho([]); setAssinaturaBase64(''); setRecebedorSelecionado('');
-      setEstaDesenhandoUI(false); 
+      avisar("Processo finalizado com sucesso!"); setCarrinho([]); setAssinaturaBase64(''); setRecebedorSelecionado('');
     } catch (e) { avisar("Erro ao salvar lote.", "erro"); }
-    
     setSalvando(false);
-  };
-
-  // ✍️ --- LÓGICA DO CANVAS TELA CHEIA (SUPER OTIMIZADA) ---
-  useEffect(() => {
-    if (!modalAssinaturaAberto || isPortrait || !canvasRef.current) return;
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    setTimeout(() => {
-      canvas.width = canvas.offsetWidth * window.devicePixelRatio;
-      canvas.height = canvas.offsetHeight * window.devicePixelRatio;
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    }, 100);
-    
-    const getPos = (e: any) => {
-      const rect = canvas.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      return { x: clientX - rect.left, y: clientY - rect.top };
-    };
-
-    const start = (e: any) => { 
-      e.preventDefault(); 
-      ctx.beginPath(); 
-      ctx.moveTo(getPos(e).x, getPos(e).y); 
-      desenhandoRef.current = true;
-      setEstaDesenhandoUI(true); 
-    };
-
-    const move = (e: any) => { 
-      if (!desenhandoRef.current) return; 
-      e.preventDefault(); 
-      ctx.lineTo(getPos(e).x, getPos(e).y); 
-      ctx.stroke(); 
-    };
-
-    const stop = () => { desenhandoRef.current = false; };
-
-    canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', stop);
-    canvas.addEventListener('touchstart', start, { passive: false }); canvas.addEventListener('touchmove', move, { passive: false }); window.addEventListener('touchend', stop);
-    
-    return () => {
-      canvas.removeEventListener('mousedown', start); canvas.removeEventListener('mousemove', move); window.removeEventListener('mouseup', stop);
-      canvas.removeEventListener('touchstart', start); canvas.removeEventListener('touchmove', move); canvas.removeEventListener('touchend', stop);
-    };
-  }, [modalAssinaturaAberto, isPortrait]);
-
-  const limparAssinatura = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (ctx && canvas) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      setAssinaturaBase64('');
-      setEstaDesenhandoUI(false); 
-      desenhandoRef.current = false;
-    }
-  };
-
-  const confirmarAssinatura = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      setAssinaturaBase64(canvas.toDataURL('image/jpeg', 0.6));
-      setModalAssinaturaAberto(false);
-    }
   };
 
   return (
@@ -337,11 +247,7 @@ export default function Entrega() {
             <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>RECEBEDOR *</label>
             <select value={recebedorSelecionado} onChange={e => setRecebedorSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', outline: 'none' }}>
               <option value="">Selecione o colaborador ou sócio...</option>
-              {recebedores.map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.tipo === 'socio' ? `[SÓCIO] ${r.nome}` : r.nome}
-                </option>
-              ))}
+              {recebedores.map(r => <option key={r.id} value={r.id}>{r.tipo === 'socio' ? `[SÓCIO] ${r.nome}` : r.nome}</option>)}
             </select>
 
             {pendenciasFuncionario.length > 0 && (
@@ -360,15 +266,59 @@ export default function Entrega() {
           </div>
 
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>ITEM DO ESTOQUE</label>
-            <select value={itemSelecionado} onChange={e => setItemSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', marginBottom: '15px', outline: 'none' }}>
-              <option value="">Buscar material...</option>
-              {estoque.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.quantidade} em estoque)</option>)}
-            </select>
+            
+            {/* ✨ SELETOR DE ORIGEM DO MATERIAL */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+              <button 
+                onClick={() => setOrigemEpi('interno')} 
+                style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', border: origemEpi === 'interno' ? '2px solid #3b82f6' : '1px solid #e2e8f0', backgroundColor: origemEpi === 'interno' ? '#eff6ff' : '#f8fafc', color: origemEpi === 'interno' ? '#1d4ed8' : '#64748b', cursor: 'pointer' }}
+              >
+                <HardHat size={16}/> Estoque Interno
+              </button>
+              <button 
+                onClick={() => setOrigemEpi('externo')} 
+                style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', border: origemEpi === 'externo' ? '2px solid #8b5cf6' : '1px solid #e2e8f0', backgroundColor: origemEpi === 'externo' ? '#faf5ff' : '#f8fafc', color: origemEpi === 'externo' ? '#6d28d9' : '#64748b', cursor: 'pointer' }}
+              >
+                <Building2 size={16}/> EPI Hyundai
+              </button>
+            </div>
+
+            {origemEpi === 'interno' ? (
+              <select value={itemSelecionado} onChange={e => setItemSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', marginBottom: '15px', outline: 'none' }}>
+                <option value="">Buscar material no estoque da Carvalho...</option>
+                {estoque.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.quantidade} em estoque)</option>)}
+              </select>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginBottom: '15px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6d28d9', display: 'block', marginBottom: '5px' }}>Nome do EPI Cedido</label>
+                  <input 
+                    list="lista-epis-externos" 
+                    value={nomeExterno} 
+                    onChange={e => handleSelectExterno(e.target.value)} 
+                    placeholder="Ex: Luva Anticorte..." 
+                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #c4b5fd', outline: 'none' }} 
+                  />
+                  <datalist id="lista-epis-externos">
+                    {episExternosSugeridos.map(e => <option key={e.id} value={e.nome} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6d28d9', display: 'block', marginBottom: '5px' }}>C.A.</label>
+                  <input 
+                    value={caExterno} 
+                    onChange={e => setCaExterno(e.target.value)} 
+                    placeholder="Opcional" 
+                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #c4b5fd', outline: 'none' }} 
+                  />
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
               <div style={{ flex: '1' }}><Input label="Qtd" type="number" value={quantidadeDesejada} onChange={e => setQuantidadeDesejada(e.target.value)} /></div>
               <div style={{ flex: '1.5' }}><Input label="Durabilidade" type="number" value={durabilidadeManual} onChange={e => setDurabilidadeManual(e.target.value)} placeholder="Dias" /></div>
-              <Button onClick={verificarEAdicionar} style={{ backgroundColor: '#3b82f6', height: '48px', padding: '0 20px', flexShrink: 0 }}><Plus size={24} /></Button>
+              <Button onClick={verificarEAdicionar} style={{ backgroundColor: origemEpi === 'interno' ? '#3b82f6' : '#8b5cf6', height: '48px', padding: '0 20px', flexShrink: 0 }}><Plus size={24} /></Button>
             </div>
           </div>
 
@@ -381,11 +331,12 @@ export default function Entrega() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {carrinho.map((item, idx) => (
-                  <div key={idx} style={{ padding: '12px', border: '1px solid #e2e8f0', backgroundColor: item.justificativa ? '#fff7ed' : '#ffffff', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div key={idx} style={{ padding: '12px', border: item.isExterno ? '1px solid #c4b5fd' : '1px solid #e2e8f0', backgroundColor: item.isExterno ? '#faf5ff' : (item.justificativa ? '#fff7ed' : '#ffffff'), borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <strong style={{ fontSize: '14px', display: 'block', color: '#1e293b' }}>{item.nome} (x{item.quantidade})</strong>
+                      <strong style={{ fontSize: '14px', display: 'block', color: item.isExterno ? '#6d28d9' : '#1e293b' }}>{item.nome} (x{item.quantidade})</strong>
                       <span style={{ fontSize: '12px', color: item.justificativa ? '#ea580c' : '#64748b', display: 'block', marginTop: '2px' }}>
                         {item.justificativa ? `⚠️ Motivo: ${item.justificativa}` : `Dura aprox: ${item.durabilidade} dias`}
+                        {item.isExterno && item.caExterno && ` | C.A: ${item.caExterno}`}
                       </span>
                     </div>
                     <button onClick={() => setCarrinho(carrinho.filter((_, i) => i !== idx))} style={{ color: '#ef4444', background: '#fef2f2', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '6px' }}><Trash2 size={18} /></button>
@@ -405,30 +356,14 @@ export default function Entrega() {
               const selecao = recebedores.find(r => r.id === recebedorSelecionado);
               if (selecao?.tipo !== 'socio') setModalAssinaturaAberto(true);
             }} 
-            style={{ 
-              height: '220px', 
-              border: '2px dashed #cbd5e1', 
-              borderRadius: '12px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              cursor: recebedores.find(r => r.id === recebedorSelecionado)?.tipo === 'socio' ? 'default' : 'pointer', 
-              backgroundColor: '#f8fafc', 
-              overflow: 'hidden' 
-            }}
+            style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: recebedores.find(r => r.id === recebedorSelecionado)?.tipo === 'socio' ? 'default' : 'pointer', backgroundColor: '#f8fafc', overflow: 'hidden' }}
           >
             {assinaturaBase64.startsWith('data:image') ? (
               <img src={assinaturaBase64} style={{ maxHeight: '100%', maxWidth: '100%' }} /> 
             ) : assinaturaBase64 === 'ASSINATURA DIGITAL (SÓCIO)' ? (
-              <div style={{ textAlign: 'center', color: '#10b981' }}>
-                <UserCheck size={50} style={{ margin: '0 auto' }} />
-                <p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Assinatura Digital Ativada</p>
-              </div>
+              <div style={{ textAlign: 'center', color: '#10b981' }}><UserCheck size={50} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Assinatura Digital Ativada</p></div>
             ) : (
-              <div style={{ textAlign: 'center', color: '#64748b' }}>
-                <PenTool size={40} style={{ margin: '0 auto' }} />
-                <p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Toque para Assinar</p>
-              </div>
+              <div style={{ textAlign: 'center', color: '#64748b' }}><PenTool size={40} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Toque para Assinar</p></div>
             )}
           </div>
 
@@ -438,74 +373,17 @@ export default function Entrega() {
         </div>
       </div>
 
-      {/* --- MODAL DA JUSTIFICATIVA --- */}
-      {itemPendenteJustificativa && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.95)', zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '450px', borderRadius: '20px', padding: '30px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
-            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <div style={{ backgroundColor: '#fff7ed', width: '70px', height: '70px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px' }}>
-                <AlertTriangle size={40} color="#f97316" />
-              </div>
-              <h2 style={{ fontSize: '20px', color: '#1e293b', margin: 0 }}>Troca Antecipada</h2>
-              <p style={{ fontSize: '14px', color: '#64748b', marginTop: '10px', lineHeight: '1.5' }}>
-                Última entrega: <strong>{itemPendenteJustificativa.dataAnterior} às {itemPendenteJustificativa.horaAnterior}</strong>.<br/>
-                Usado por <strong>{itemPendenteJustificativa.diasPassados} dias</strong>, deveria durar <strong>{itemPendenteJustificativa.durabilidadePrevista} dias</strong>.
-              </p>
-            </div>
+      <ModalJustificativa 
+        item={itemPendenteJustificativa} 
+        onClose={() => setItemPendenteJustificativa(null)} 
+        onConfirm={(just) => adicionarAoCarrinho(itemPendenteJustificativa, itemPendenteJustificativa.dur, just)} 
+      />
 
-            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '10px' }}>QUAL O MOTIVO DA TROCA?</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-              {JUSTIFICATIVAS_PADRAO.map(j => (
-                <button key={j} onClick={() => setJustificativaSelecionada(j)} style={{ textAlign: 'left', padding: '14px', borderRadius: '10px', border: justificativaSelecionada === j ? '2px solid #f97316' : '1px solid #e2e8f0', backgroundColor: justificativaSelecionada === j ? '#fff7ed' : 'white', fontSize: '14px', fontWeight: justificativaSelecionada === j ? 'bold' : 'normal', transition: '0.2s', cursor: 'pointer' }}>{j}</button>
-              ))}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '30px' }}>
-              <Button onClick={() => setItemPendenteJustificativa(null)} style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>Cancelar</Button>
-              <Button onClick={() => adicionarAoCarrinho(itemPendenteJustificativa, itemPendenteJustificativa.dur, justificativaSelecionada)} disabled={!justificativaSelecionada} style={{ backgroundColor: '#f97316' }}>Autorizar</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL DA ASSINATURA --- */}
-      {modalAssinaturaAberto && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'white', zIndex: 10000, display: 'flex', flexDirection: 'column' }}>
-          
-          {isPortrait ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1e293b', color: 'white', padding: '20px', textAlign: 'center' }}>
-              <Smartphone size={70} style={{ marginBottom: '20px', transform: 'rotate(-90deg)', opacity: 0.8, color: '#3b82f6' }} />
-              <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px' }}>Gire o Celular</h2>
-              <p style={{ color: '#cbd5e1', fontSize: '16px', marginBottom: '30px', maxWidth: '300px', lineHeight: '1.5' }}>
-                Para garantir que a assinatura fique nas proporções corretas do documento, coloque o seu aparelho na <strong>horizontal</strong>.
-              </p>
-              <Button onClick={() => setModalAssinaturaAberto(false)} style={{ backgroundColor: '#475569', color: 'white', height: '50px', padding: '0 30px' }}>Voltar</Button>
-            </div>
-          ) : (
-            <>
-              <div style={{ padding: '10px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
-                <h2 style={{ fontSize: '18px', margin: 0, fontWeight: '800', color: '#1e293b' }}>Assinatura do Colaborador</h2>
-                <button onClick={() => setModalAssinaturaAberto(false)} style={{ background: '#e2e8f0', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer' }}><X size={20} color="#475569" /></button>
-              </div>
-
-              <div style={{ flex: 1, position: 'relative', touchAction: 'none' }}>
-                <canvas ref={canvasRef} style={{ width: '100%', height: '100%', cursor: 'crosshair', display: 'block' }} />
-                {!estaDesenhandoUI && (
-                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', opacity: 0.2, textAlign: 'center' }}>
-                    <PenTool size={60} style={{ margin: '0 auto' }} />
-                    <p style={{ fontSize: '18px', fontWeight: 'bold' }}>Assine Aqui</p>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ padding: '15px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '15px', backgroundColor: '#f8fafc' }}>
-                <Button onClick={limparAssinatura} style={{ flex: 1, height: '45px', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>Limpar</Button>
-                <Button onClick={confirmarAssinatura} style={{ flex: 2, height: '45px', backgroundColor: '#10b981', fontWeight: 'bold' }}>Confirmar Assinatura</Button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      <ModalAssinaturaEntrega 
+        aberto={modalAssinaturaAberto} 
+        onClose={() => setModalAssinaturaAberto(false)} 
+        onConfirm={(base64) => { setAssinaturaBase64(base64); setModalAssinaturaAberto(false); }} 
+      />
 
     </div>
   );
