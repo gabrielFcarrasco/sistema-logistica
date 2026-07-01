@@ -6,7 +6,7 @@ import { db } from '../services/firebase';
 
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { ClipboardSignature, CheckCircle2, AlertCircle, PenTool, Plus, ShoppingCart, Trash2, Shirt, UserCheck, HardHat, Building2 } from 'lucide-react';
+import { ClipboardSignature, CheckCircle2, AlertCircle, PenTool, Plus, ShoppingCart, Trash2, Shirt, UserCheck, HardHat, Building2, Smartphone } from 'lucide-react';
 
 import ModalJustificativa from '../components/entrega/ModalJustificativa';
 import ModalAssinaturaEntrega from '../components/entrega/ModalAssinaturaEntrega';
@@ -25,7 +25,7 @@ export default function Entrega() {
   const [recebedorSelecionado, setRecebedorSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   
-  // ✨ NOVOS ESTADOS: Gestão de EPIs Externos
+  // Gestão de EPIs Externos
   const [origemEpi, setOrigemEpi] = useState<'interno' | 'externo'>('interno');
   const [episExternosSugeridos, setEpisExternosSugeridos] = useState<any[]>([]);
   const [nomeExterno, setNomeExterno] = useState('');
@@ -62,7 +62,6 @@ export default function Entrega() {
       setEstoque(itensFiltrados);
     });
 
-    // ✨ NOVO: Escutar os EPIs externos já registados na base de dados
     const unsubExternos = onSnapshot(collection(db, 'epis_externos'), (snap) => {
       setEpisExternosSugeridos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -93,7 +92,6 @@ export default function Entrega() {
     }
   }, [itemSelecionado, estoque, origemEpi]);
 
-  // ✨ NOVO: Auto-preenche o CA se o EPI externo já existir na base de dados
   const handleSelectExterno = (nome: string) => {
     setNomeExterno(nome);
     const existente = episExternosSugeridos.find(e => e.nome.toLowerCase() === nome.toLowerCase());
@@ -110,7 +108,7 @@ export default function Entrega() {
     if (!recebedorSelecionado) return avisar("Selecione o recebedor.", "erro");
     if (Number(quantidadeDesejada) <= 0) return avisar("A quantidade deve ser maior que zero.", "erro");
     
-    // ✨ LÓGICA PARA EPI EXTERNO
+    // LÓGICA PARA EPI EXTERNO
     if (origemEpi === 'externo') {
       if (!nomeExterno.trim()) return avisar("Digite o nome do EPI do cliente.", "erro");
       
@@ -173,27 +171,29 @@ export default function Entrega() {
     setItemPendenteJustificativa(null);
   };
 
-  const finalizarEntregaTotal = async () => {
-    if (!assinaturaBase64 || carrinho.length === 0) return avisar("Faltam dados.", "erro");
+  // ✨ ATUALIZADO: Agora aceita método Local ou via Link e corrige o erro do Firebase (undefined)
+  const finalizarEntregaTotal = async (metodo: 'local' | 'link') => {
+    if (metodo === 'local' && !assinaturaBase64) return avisar("Por favor, assine no quadro acima.", "erro");
+    if (carrinho.length === 0) return avisar("O carrinho está vazio.", "erro");
+    
     setSalvando(true);
     try {
       const horarioAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       const selecao = recebedores.find(r => r.id === recebedorSelecionado);
+      
+      // Gera um Lote Único para agrupar os itens desta entrega
+      const loteUnicoId = `LOTE-${Date.now()}`;
 
       for (const item of carrinho) {
         
-        // ✨ Se for um EPI externo novo, regista-o na coleção de sugestões
         if (item.isExterno) {
           const existe = episExternosSugeridos.find(e => e.nome.toLowerCase() === item.nomeOriginalExterno?.toLowerCase());
           if (!existe) {
-            await addDoc(collection(db, 'epis_externos'), { 
-              nome: item.nomeOriginalExterno, 
-              ca: item.caExterno || '' 
-            });
+            await addDoc(collection(db, 'epis_externos'), { nome: item.nomeOriginalExterno, ca: item.caExterno || '' });
           }
         }
 
-        // Regista a entrega para a Ficha de EPI
+        // Registo da Entrega no Banco de Dados
         await addDoc(collection(db, 'entregas'), {
           setorId: setorAtivo, 
           funcionarioId: recebedorSelecionado, 
@@ -202,28 +202,42 @@ export default function Entrega() {
           itemNome: item.nome, 
           quantidade: item.quantidade, 
           durabilidade: item.durabilidade,
-          ca: item.isExterno ? item.caExterno : undefined, // Regista o CA para sair no PDF
+          ca: item.isExterno ? (item.caExterno || '') : '', // Corrige o erro de "undefined"
           origem: item.isExterno ? 'externa_cliente' : 'estoque_interno',
           justificativa: item.justificativa || (item.isExterno ? "EPI Cedido pelo Cliente" : "Retirada Normal"),
-          assinatura: assinaturaBase64, 
+          assinatura: metodo === 'local' ? assinaturaBase64 : 'pendente', // Define como pendente se for por link
+          loteId: loteUnicoId, 
           dataHora: serverTimestamp(), 
           horarioEntrega: horarioAgora, 
           recebedorTipo: selecao.tipo
         });
 
-        // Apenas baixa no estoque se for material interno
         if (!item.isExterno) {
           if (item.isPendencia && item.pendenciaId) {
             await updateDoc(doc(db, 'entregas_pendentes', item.pendenciaId), { status: 'entregue', entregueEm: serverTimestamp() });
           } else {
             const itemRef = doc(db, 'estoque', item.id);
             const itemDoc = await getDoc(itemRef);
-            await updateDoc(itemRef, { quantidade: (itemDoc.data()?.quantidade || 0) - item.quantidade, durabilidadeSugerida: item.durabilidade });
+            if (itemDoc.exists()) {
+               await updateDoc(itemRef, { quantidade: (itemDoc.data()?.quantidade || 0) - item.quantidade, durabilidadeSugerida: item.durabilidade });
+            }
           }
         }
       }
-      avisar("Processo finalizado com sucesso!"); setCarrinho([]); setAssinaturaBase64(''); setRecebedorSelecionado('');
-    } catch (e) { avisar("Erro ao salvar lote.", "erro"); }
+
+      // Se for via link, gera a URL pública e abre o WhatsApp
+      if (metodo === 'link') {
+        const url = `${window.location.origin}/assinar-epi/${loteUnicoId}`;
+        const texto = `Olá ${selecao.nome}! A Carvalho Pintura registou a entrega de EPIs para si.\n\nPor favor, acesse o link abaixo pelo seu telemóvel para conferir os itens e realizar a assinatura digital (obrigatório):\n\n🔗 *Acessar Ficha de EPI:*\n${url}`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
+      }
+
+      avisar(metodo === 'link' ? "Entrega registada! Link gerado." : "Processo finalizado com sucesso!"); 
+      setCarrinho([]); setAssinaturaBase64(''); setRecebedorSelecionado('');
+    } catch (e) { 
+      console.error(e);
+      avisar("Erro ao salvar lote.", "erro"); 
+    }
     setSalvando(false);
   };
 
@@ -267,7 +281,6 @@ export default function Entrega() {
 
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
             
-            {/* ✨ SELETOR DE ORIGEM DO MATERIAL */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
               <button 
                 onClick={() => setOrigemEpi('interno')} 
@@ -363,13 +376,28 @@ export default function Entrega() {
             ) : assinaturaBase64 === 'ASSINATURA DIGITAL (SÓCIO)' ? (
               <div style={{ textAlign: 'center', color: '#10b981' }}><UserCheck size={50} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Assinatura Digital Ativada</p></div>
             ) : (
-              <div style={{ textAlign: 'center', color: '#64748b' }}><PenTool size={40} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Toque para Assinar</p></div>
+              <div style={{ textAlign: 'center', color: '#64748b' }}><PenTool size={40} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Toque para Assinar na Tela</p></div>
             )}
           </div>
 
-          <Button disabled={salvando || !assinaturaBase64 || carrinho.length === 0} onClick={finalizarEntregaTotal} style={{ height: '60px', fontSize: '16px', fontWeight: 'bold', backgroundColor: assinaturaBase64 && carrinho.length > 0 ? '#10b981' : '#94a3b8' }}>
-            {salvando ? 'PROCESSANDO...' : 'FINALIZAR E SALVAR'}
-          </Button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <Button 
+              disabled={salvando || !assinaturaBase64 || carrinho.length === 0} 
+              onClick={() => finalizarEntregaTotal('local')} 
+              style={{ height: '50px', fontSize: '14px', fontWeight: 'bold', backgroundColor: assinaturaBase64 && carrinho.length > 0 ? '#10b981' : '#94a3b8' }}
+            >
+              <PenTool size={18} style={{ marginRight: '8px' }}/> {salvando ? 'PROCESSANDO...' : 'Salvar Assinatura Local'}
+            </Button>
+
+            <Button 
+              disabled={salvando || carrinho.length === 0 || !!assinaturaBase64} 
+              onClick={() => finalizarEntregaTotal('link')} 
+              style={{ height: '50px', fontSize: '14px', fontWeight: 'bold', backgroundColor: carrinho.length > 0 && !assinaturaBase64 ? '#3b82f6' : '#cbd5e1' }}
+              title="Salva os itens e envia um link para o funcionário assinar depois."
+            >
+              <Smartphone size={18} style={{ marginRight: '8px' }}/> Enviar Link (WhatsApp)
+            </Button>
+          </div>
         </div>
       </div>
 
