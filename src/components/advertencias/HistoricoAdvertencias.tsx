@@ -135,8 +135,12 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
       docPdf.text(adv.nomeTestemunha2 ? `2. Nome: ${adv.nomeTestemunha2} / CPF:` : "2. Nome / CPF:", 120, yTestemunhas + 15);
     }
 
-    // PÁGINA EXTRA: ANEXO FOTOGRÁFICO
-    if (adv.fotoOcorrenciaBase64) {
+        // ANEXO FOTOGRÁFICO (Suporte a Múltiplas Fotos)
+    const fotosParaAnexo = adv.fotosOcorrencia && adv.fotosOcorrencia.length > 0 
+      ? adv.fotosOcorrencia 
+      : (adv.fotoOcorrenciaBase64 ? [adv.fotoOcorrenciaBase64] : []);
+
+    if (fotosParaAnexo.length > 0) {
       docPdf.addPage();
       docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(16);
       docPdf.text("ANEXO FOTOGRÁFICO - EVIDÊNCIA DA INFRAÇÃO", 105, 20, { align: 'center' });
@@ -145,12 +149,38 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
       docPdf.setFontSize(10); docPdf.setFont("helvetica", "normal");
       docPdf.text(`Documento Ref.: ${tituloDoc}`, 15, 35);
       docPdf.text(`Colaborador: ${adv.funcionarioNome}`, 15, 40);
-      try {
-        docPdf.addImage(adv.fotoOcorrenciaBase64, 'JPEG', 25, 55, 160, 120);
-        docPdf.setDrawColor(203, 213, 225); docPdf.rect(25, 55, 160, 120);
-      } catch(e) {}
+      
+      let currentX = 25;
+      let currentY = 55;
+      
+      // Se houver apenas 1 foto, exibe-a bem grande. Se houver mais, cria uma grelha 2x2 (ou mais)
+      const imgWidth = fotosParaAnexo.length === 1 ? 160 : 75; 
+      const imgHeight = fotosParaAnexo.length === 1 ? 120 : 75;
+
+      fotosParaAnexo.forEach((fotoBase64, index) => {
+        // Quebra de coluna para a grelha
+        if (index > 0 && index % 2 === 0) {
+          currentX = 25;
+          currentY += imgHeight + 10;
+        }
+        
+        // Se a foto não couber na página, adiciona uma nova página automaticamente
+        if (currentY + imgHeight > 280) {
+          docPdf.addPage();
+          currentY = 20;
+          currentX = 25;
+        }
+
+        try {
+          docPdf.addImage(fotoBase64, 'JPEG', currentX, currentY, imgWidth, imgHeight);
+          docPdf.setDrawColor(203, 213, 225); 
+          docPdf.rect(currentX, currentY, imgWidth, imgHeight); // Bordadura na imagem
+        } catch(e) {}
+        
+        currentX += imgWidth + 10;
+      });
     }
-  };
+
 
   // 📄 GERA UM PDF INDIVIDUAL
   const gerarPDFFormal = (adv: Advertencia) => {
