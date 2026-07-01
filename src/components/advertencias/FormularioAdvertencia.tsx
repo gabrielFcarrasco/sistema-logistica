@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 
-import { MessageSquare, FileSignature, Camera, PenTool, X, Users, AlertTriangle, Printer } from 'lucide-react';
+import { MessageSquare, FileSignature, Camera, PenTool, X, AlertTriangle, Printer } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import ModalAssinaturaAdv from './ModalAssinaturaAdv';
@@ -14,7 +14,7 @@ const INFRACÕES_COMUNS = [
   "Atraso injustificado ao posto de trabalho",
   "Falta injustificada",
   "Desrespeito às normas de segurança da empresa",
-  "Desperdício ou mau uso de materiais/EPIs",
+  "Dano intencional ou mau uso de materiais/EPIs",
   "Insubordinação / Descumprimento de Ordem",
   "Outros (Especificar nos detalhes)"
 ];
@@ -33,7 +33,8 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
   const [motivoComum, setMotivoComum] = useState('');
   const [detalhesMotivo, setDetalhesMotivo] = useState('');
   
-  const [fotoOcorrenciaBase64, setFotoOcorrenciaBase64] = useState('');
+  // ✨ NOVO ESTADO: Array de imagens em Base64
+  const [fotosOcorrencia, setFotosOcorrencia] = useState<string[]>([]);
   const fotoInputRef = useRef<HTMLInputElement>(null);
   
   const [metodoAssinatura, setMetodoAssinatura] = useState<'digital' | 'fisica' | 'recusa'>('digital');
@@ -43,42 +44,48 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
   const [nomeTestemunha1, setNomeTestemunha1] = useState('');
   const [nomeTestemunha2, setNomeTestemunha2] = useState('');
 
-  // ✨ FUNÇÃO ATUALIZADA: Mais rápida e à prova de falhas em dispositivos móveis
-  const processarFotoOcorrencia = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // ✨ FUNÇÃO ATUALIZADA: Permite carregar e redimensionar múltiplas fotos
+  const processarFotosOcorrencia = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_SIZE = 800;
-        let width = img.width; 
-        let height = img.height;
-        
-        if (width > height && width > MAX_SIZE) { 
-          height *= MAX_SIZE / width; 
-          width = MAX_SIZE; 
-        } else if (height > MAX_SIZE) { 
-          width *= MAX_SIZE / height; 
-          height = MAX_SIZE; 
-        }
-        
-        canvas.width = width; 
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          setFotoOcorrenciaBase64(canvas.toDataURL('image/jpeg', 0.6));
-        }
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 800; // Mantém a qualidade alta mas o tamanho do ficheiro baixo
+          let width = img.width; 
+          let height = img.height;
+          
+          if (width > height && width > MAX_SIZE) { 
+            height *= MAX_SIZE / width; 
+            width = MAX_SIZE; 
+          } else if (height > MAX_SIZE) { 
+            width *= MAX_SIZE / height; 
+            height = MAX_SIZE; 
+          }
+          
+          canvas.width = width; 
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const base64 = canvas.toDataURL('image/jpeg', 0.6);
+            setFotosOcorrencia(prev => [...prev, base64]);
+          }
+        };
+        img.src = event.target?.result as string;
       };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    });
 
-    // ✨ TRUQUE DE MESTRE: Limpar o input permite anexar a mesma foto de novo se você apagar sem querer
-    e.target.value = '';
+    e.target.value = ''; // Limpa o input para poder adicionar mais depois
+  };
+
+  const removerFoto = (index: number) => {
+    setFotosOcorrencia(prev => prev.filter((_, i) => i !== index));
   };
 
   const registrarAdvertencia = async (e: React.FormEvent) => {
@@ -113,7 +120,8 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
         recusouAssinar: metodoAssinatura === 'recusa',
         nomeTestemunha1: metodoAssinatura === 'recusa' ? nomeTestemunha1 : '', 
         nomeTestemunha2: metodoAssinatura === 'recusa' ? nomeTestemunha2 : '', 
-        fotoOcorrenciaBase64, 
+        fotosOcorrencia, // ✨ Grava a nova Array com as múltiplas fotos
+        fotoOcorrenciaBase64: fotosOcorrencia.length > 0 ? fotosOcorrencia[0] : '', // Retro-compatibilidade com relatórios antigos
         createdAt: serverTimestamp()
       });
       
@@ -121,7 +129,7 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
       
       setFuncionarioId(''); setMotivoComum(''); setDetalhesMotivo(''); 
       setDataOcorrencia(''); setHoraOcorrencia(''); setAssinaturaBase64(''); 
-      setFotoOcorrenciaBase64(''); setMetodoAssinatura('digital');
+      setFotosOcorrencia([]); setMetodoAssinatura('digital');
       setNomeTestemunha1(''); setNomeTestemunha2('');
       
     } catch (error) { 
@@ -171,21 +179,27 @@ export default function FormularioAdvertencia({ funcionarios, avisar }: Props) {
             {INFRACÕES_COMUNS.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
 
-          <textarea value={detalhesMotivo} onChange={e => setDetalhesMotivo(e.target.value)} placeholder="Cole aqui a redação formal e jurídica da ocorrência..." style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', minHeight: '100px', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }} />
+          <textarea value={detalhesMotivo} onChange={e => setDetalhesMotivo(e.target.value)} placeholder="Descreva os fatos com detalhes (ex: Encontrado sem luva e com o Tyvek danificado propositadamente...)" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', minHeight: '100px', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }} />
 
+          {/* ✨ NOVA INTERFACE: Grelha de fotos */}
           <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-            {fotoOcorrenciaBase64 ? (
-              <div style={{ position: 'relative', height: '120px' }}>
-                <img src={fotoOcorrenciaBase64} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }} alt="Evidência" />
-                <button type="button" onClick={() => setFotoOcorrenciaBase64('')} style={{ position: 'absolute', top: 5, right: 5, backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '25px', height: '25px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><X size={14}/></button>
+            {fotosOcorrencia.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '10px', marginBottom: '15px' }}>
+                {fotosOcorrencia.map((foto, index) => (
+                  <div key={index} style={{ position: 'relative', height: '80px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                    <img src={foto} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={`Evidência ${index + 1}`} />
+                    <button type="button" onClick={() => removerFoto(index)} style={{ position: 'absolute', top: 4, right: 4, backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><X size={12}/></button>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <Button type="button" onClick={() => fotoInputRef.current?.click()} style={{ width: '100%', backgroundColor: 'white', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
-                <Camera size={18} style={{ marginRight: '8px' }} /> Anexar Foto de Evidência
-              </Button>
             )}
-            {/* ✨ ATUALIZADO: Removido o capture="environment" para não bloquear a galeria do telemóvel */}
-            <input type="file" accept="image/*" ref={fotoInputRef} onChange={processarFotoOcorrencia} style={{ display: 'none' }} />
+            
+            <Button type="button" onClick={() => fotoInputRef.current?.click()} style={{ width: '100%', backgroundColor: 'white', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
+              <Camera size={18} style={{ marginRight: '8px' }} /> 
+              {fotosOcorrencia.length > 0 ? 'Anexar Mais Fotos' : 'Anexar Fotos de Evidência'}
+            </Button>
+            {/* O atributo "multiple" permite selecionar várias fotos na galeria do celular */}
+            <input type="file" accept="image/*" multiple ref={fotoInputRef} onChange={processarFotosOcorrencia} style={{ display: 'none' }} />
           </div>
         </div>
 
