@@ -20,6 +20,7 @@ interface Advertencia {
   nomeTestemunha1?: string;
   nomeTestemunha2?: string;
   fotoOcorrenciaBase64?: string;
+  fotosOcorrencia?: string[]; // ✨ CORREÇÃO: Adicionado para o TypeScript reconhecer as múltiplas fotos
 }
 
 interface Props {
@@ -79,8 +80,6 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
     const splitConclusao = docPdf.splitTextToSize(textoConclusao, 180);
     docPdf.text(splitConclusao, 15, yConclusao);
 
-    // ✨ A linha de "Araraquara/SP..." foi removida daqui!
-    // As assinaturas agora descem calculando diretamente do fim do texto da conclusão.
     const yAssinaturas = yConclusao + (splitConclusao.length * 5) + 25;
     
     docPdf.setDrawColor(0,0,0);
@@ -135,7 +134,7 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
       docPdf.text(adv.nomeTestemunha2 ? `2. Nome: ${adv.nomeTestemunha2} / CPF:` : "2. Nome / CPF:", 120, yTestemunhas + 15);
     }
 
-        // ANEXO FOTOGRÁFICO (Suporte a Múltiplas Fotos)
+    // ANEXO FOTOGRÁFICO (Suporte a Múltiplas Fotos)
     const fotosParaAnexo = adv.fotosOcorrencia && adv.fotosOcorrencia.length > 0 
       ? adv.fotosOcorrencia 
       : (adv.fotoOcorrenciaBase64 ? [adv.fotoOcorrenciaBase64] : []);
@@ -180,12 +179,12 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
         currentX += imgWidth + 10;
       });
     }
-
+  }; // ✨ CORREÇÃO: Esta era a chave de fecho "};" que faltava!
 
   // 📄 GERA UM PDF INDIVIDUAL
   const gerarPDFFormal = (adv: Advertencia) => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
-    renderizarPaginaAdvertencia(docPdf, adv); // Omitimos a data atual
+    renderizarPaginaAdvertencia(docPdf, adv); 
 
     const dataArquivo = adv.dataOcorrencia.split('-').reverse().join('-');
     const primeiroNome = adv.funcionarioNome.split(' ')[0];
@@ -217,7 +216,7 @@ export default function HistoricoAdvertencias({ advertencias }: Props) {
       return alert("Nenhum registro de advertência encontrado para este período selecionado.");
     }
 
-    // Ordena cronologicamente (da ocorrência mais antiga para a mais nova) para o PDF fazer sentido
+    // Ordena cronologicamente
     filtradas.sort((a, b) => new Date(`${a.dataOcorrencia}T12:00:00`).getTime() - new Date(`${b.dataOcorrencia}T12:00:00`).getTime());
 
     const docPdf = new jsPDF('p', 'mm', 'a4');

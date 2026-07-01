@@ -16,8 +16,11 @@ import Advertencias from './pages/Advertencias';
 import GestaoAcessos from './pages/GestaoAcessos';
 
 
-// === NOVA PÁGINA DE ASSINATURA PÚBLICA ===
+
+// === ASSINATURA PÚBLICA ===
 import AssinaturaExterna from './pages/AssinaturaExterna'; 
+import AssinaturaEPI from './pages/AssinaturaEPI';
+import AssinaturaCronograma from './pages/AssinaturaCronograma';
 
 export default function App() {
   return (
@@ -27,6 +30,8 @@ export default function App() {
         {/* === ROTAS PÚBLICAS === */}
         <Route path="/" element={<Login />} />
         <Route path="/assinar-os/:id" element={<AssinaturaExterna />} />
+        <Route path="/assinatura-epi" element={<AssinaturaEPI />} />
+        <Route path="/assinatura-cronograma" element={<AssinaturaCronograma />} />
 
         {/* === ROTAS PRIVADAS === */}
         <Route element={<Layout />}>

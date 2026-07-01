@@ -4,18 +4,23 @@ import { useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
-import { CheckCircle2, AlertCircle, TrainFront, ClipboardSignature, Briefcase } from 'lucide-react';
+// ✨ NOVO: Importamos o ícone CalendarDays para a aba do Cronograma
+import { CheckCircle2, AlertCircle, TrainFront, ClipboardSignature, Briefcase, CalendarDays } from 'lucide-react';
 import Button from '../components/ui/Button';
 
-// Importa os novos componentes modulares
+// Importa os componentes modulares
 import KanbanTruques from '../components/prestacao-servicos/KanbanTruques';
 import GerenciadorOS from '../components/prestacao-servicos/GerenciadorOS';
+// ✨ NOVO: Importamos o componente de Cronograma que acabámos de criar
+import CronogramaServicos from '../components/prestacao-servicos/CronogramaServicos';
 
 export default function PrestacaoServicos() {
   const { setorAtivo } = useOutletContext<{ setorAtivo: string }>();
 
   const [funcionarios, setFuncionarios] = useState<any[]>([]);
-  const [abaAtiva, setAbaAtiva] = useState<'truques' | 'os'>('truques');
+  
+  // ✨ ATUALIZADO: O estado agora aceita a aba 'cronograma'
+  const [abaAtiva, setAbaAtiva] = useState<'truques' | 'os' | 'cronograma'>('truques');
   const [notificacao, setNotificacao] = useState<{msg: string, tipo: 'sucesso' | 'erro'} | null>(null);
   const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
 
@@ -34,7 +39,6 @@ export default function PrestacaoServicos() {
     if (!setorAtivo) return;
     const qFunc = query(collection(db, 'funcionarios'), where('setorId', '==', setorAtivo));
     const unsubFunc = onSnapshot(qFunc, (snap) => {
-       // ✨ IGNORA TOTALMENTE OS DESLIGADOS NA PRODUÇÃO
        const ativos = snap.docs
          .map(d => ({ id: d.id, ...d.data() }))
          .filter((f: any) => f.status !== 'desligado');
@@ -58,24 +62,26 @@ export default function PrestacaoServicos() {
         <h1 style={{ fontSize: '24px', color: '#1e293b', margin: '0 0 5px 0', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Briefcase color="var(--cor-primaria)" /> Operação e Serviços
         </h1>
-        <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Gerencie a linha de produção e gere Ordens de Serviço.</p>
+        <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Gerencie a linha de produção, gere Ordens de Serviço e o Diário de Obra.</p>
       </div>
 
+      {/* ✨ ATUALIZADO: Agora temos 3 botões para as 3 abas */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' }}>
-        <Button onClick={() => setAbaAtiva('truques')} style={{ flex: 1, backgroundColor: abaAtiva === 'truques' ? '#3b82f6' : '#e2e8f0', color: abaAtiva === 'truques' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
+        <Button onClick={() => setAbaAtiva('truques')} style={{ flex: 1, minWidth: '200px', backgroundColor: abaAtiva === 'truques' ? '#3b82f6' : '#e2e8f0', color: abaAtiva === 'truques' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
           <TrainFront size={18}/> Truques e Jateamento
         </Button>
-        <Button onClick={() => setAbaAtiva('os')} style={{ flex: 1, backgroundColor: abaAtiva === 'os' ? '#8b5cf6' : '#e2e8f0', color: abaAtiva === 'os' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
+        <Button onClick={() => setAbaAtiva('os')} style={{ flex: 1, minWidth: '200px', backgroundColor: abaAtiva === 'os' ? '#8b5cf6' : '#e2e8f0', color: abaAtiva === 'os' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
           <ClipboardSignature size={18}/> OS Hyundai Rotem
+        </Button>
+        <Button onClick={() => setAbaAtiva('cronograma')} style={{ flex: 1, minWidth: '200px', backgroundColor: abaAtiva === 'cronograma' ? '#10b981' : '#e2e8f0', color: abaAtiva === 'cronograma' ? 'white' : '#475569', height: '50px', display: 'flex', gap: '8px' }}>
+          <CalendarDays size={18}/> Diário de Obra (Rotem)
         </Button>
       </div>
 
-      {/* RENDERIZA O COMPONENTE DE ACORDO COM A ABA ATIVA */}
-      {abaAtiva === 'truques' ? (
-        <KanbanTruques setorAtivo={setorAtivo} funcionarios={funcionarios} avisar={avisar} />
-      ) : (
-        <GerenciadorOS setorAtivo={setorAtivo} isPortrait={isPortrait} avisar={avisar} />
-      )}
+      {/* ✨ ATUALIZADO: RENDERIZA O COMPONENTE DE ACORDO COM A ABA ATIVA */}
+      {abaAtiva === 'truques' && <KanbanTruques setorAtivo={setorAtivo} funcionarios={funcionarios} avisar={avisar} />}
+      {abaAtiva === 'os' && <GerenciadorOS setorAtivo={setorAtivo} isPortrait={isPortrait} avisar={avisar} />}
+      {abaAtiva === 'cronograma' && <CronogramaServicos setorAtivo={setorAtivo} funcionarios={funcionarios} avisar={avisar} />}
 
     </div>
   );
