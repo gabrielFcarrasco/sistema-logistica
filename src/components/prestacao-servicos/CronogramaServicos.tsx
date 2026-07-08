@@ -6,6 +6,9 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import logoCarvalho from '../../assets/logopdf.png';
 
+// ✨ Importamos os dados da empresa para o cabeçalho unificado
+import { DADOS_EMPRESA } from '../../config/empresa';
+
 import { Calendar, Clock, Plus, Trash2, Share2, Printer, CheckCircle, Edit3 } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -18,18 +21,17 @@ interface Props { setorAtivo: string; funcionarios: any[]; avisar: (msg: string,
 export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }: Props) {
   const [atividades, setAtividades] = useState<any[]>([]);
   
-  // ✨ ESTADOS DO LOTE E EDIÇÃO
-  const [loteEmEdicao, setLoteEmEdicao] = useState<any>(null); // Guarda o lote original se estivermos a editar
+  // ESTADOS DO LOTE E EDIÇÃO
+  const [loteEmEdicao, setLoteEmEdicao] = useState<any>(null); 
   const [dataLote, setDataLote] = useState(new Date().toISOString().split('T')[0]);
   const [carrinhoServicos, setCarrinhoServicos] = useState<any[]>([]);
   
   // Estados para Assinatura Local no Aparelho
   const [modalAssinaturaAberto, setModalAssinaturaAberto] = useState(false);
   const [loteParaAssinar, setLoteParaAssinar] = useState<any>(null);
-  // O "quemAssina" agora pode ser 'carvalho' ou o Nome do responsável da Rotem
   const [quemAssina, setQuemAssina] = useState<string | null>(null);
 
-  // ✨ ESTADOS DO SERVIÇO TEMPORÁRIO (Adicionamos o responsavelRotem aqui)
+  // ESTADOS DO SERVIÇO TEMPORÁRIO 
   const [servico, setServico] = useState('');
   const [horaInicio, setHoraInicio] = useState('08:00');
   const [horaTermino, setHoraTermino] = useState('17:00');
@@ -54,7 +56,6 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
     }
     setCarrinhoServicos([...carrinhoServicos, { servico, horaInicio, horaTermino, equipe, responsavelRotem }]);
     
-    // Limpamos o serviço e equipa, mas mantemos o responsável Rotem e horas para facilitar o próximo lançamento
     setServico(''); 
     setEquipe([]);
   };
@@ -63,21 +64,17 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
     setCarrinhoServicos(prev => prev.filter((_, i) => i !== index));
   };
 
-  // ✨ LÓGICA DE SALVAR (CRIAÇÃO OU EDIÇÃO)
+  // LÓGICA DE SALVAR (CRIAÇÃO OU EDIÇÃO)
   const salvarLote = async () => {
     if (carrinhoServicos.length === 0) return avisar("Adicione pelo menos um serviço.", "erro");
     
     try {
-      // 1. Descobrir todos os responsáveis únicos da Rotem neste lote
       const nomesUnicosRotem = Array.from(new Set(carrinhoServicos.map(s => s.responsavelRotem)));
-      
-      // 2. Preparar o objeto de assinaturas da Rotem
-      // Se for edição, mantemos as assinaturas que já existiam para não as apagar
       const assinaturasRotemObj = loteEmEdicao?.assinaturasRotem ? { ...loteEmEdicao.assinaturasRotem } : {};
       
       nomesUnicosRotem.forEach(nome => {
         if (!assinaturasRotemObj[nome]) {
-          assinaturasRotemObj[nome] = 'pendente'; // Cria a pendência para novos responsáveis
+          assinaturasRotemObj[nome] = 'pendente'; 
         }
       });
 
@@ -91,27 +88,23 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
       };
 
       if (loteEmEdicao) {
-        // Se estamos a editar, atualiza o documento existente
         await updateDoc(doc(db, 'diario_obra_lotes', loteEmEdicao.id), dadosDoLote);
         avisar("Diário de Obra atualizado com sucesso!");
       } else {
-        // Se é novo, cria um documento do zero
         await addDoc(collection(db, 'diario_obra_lotes'), { ...dadosDoLote, createdAt: serverTimestamp() });
         avisar("Diário de Obra criado com sucesso!");
       }
 
-      // Limpar formulário após salvar
       cancelarEdicao();
       
     } catch (e) { avisar("Erro ao salvar o diário.", "erro"); }
   };
 
-  // ✨ INICIAR E CANCELAR EDIÇÃO
   const iniciarEdicao = (lote: any) => {
     setLoteEmEdicao(lote);
     setDataLote(lote.data);
     setCarrinhoServicos(lote.servicos || []);
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // Sobe a página para o formulário
+    window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
   const cancelarEdicao = () => {
@@ -130,7 +123,6 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
     }
   };
 
-  // ✨ LÓGICA DE ASSINATURA LOCAL DINÂMICA
   const salvarAssinaturaLocal = async (base64: string) => {
     if (!loteParaAssinar || !quemAssina) return;
     
@@ -143,11 +135,9 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
       if (quemAssina === 'carvalho') {
         assinaturaCarvalhoAtual = base64;
       } else {
-        // O quemAssina é o nome do responsável Rotem (ex: "João", "Maria")
         assinaturasRotemAtuais[quemAssina] = base64;
       }
       
-      // Avalia se o status final deve ser concluído (Carvalho + Todos da Rotem)
       const todasRotemAssinadas = Object.values(assinaturasRotemAtuais).every(status => status !== 'pendente');
       const isConcluido = assinaturaCarvalhoAtual !== 'pendente' && todasRotemAssinadas;
       
@@ -168,26 +158,45 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
   };
 
-  // 📄 GERADOR DE PDF PROFISSIONAL (Suporta as múltiplas assinaturas)
+  // ✨ GERADOR DE PDF - AGORA VERTICAL ('p') E COM CABEÇALHO DA EMPRESA
   const gerarPDF = (lote: any) => {
-    const doc = new jsPDF('l', 'mm', 'a4');
-    try { doc.addImage(logoCarvalho, 'PNG', 15, 10, 35, 10); } catch(e){}
-    doc.setFont("helvetica", "bold"); doc.setFontSize(16); 
-    doc.text("DIÁRIO DE OBRA - PRESTAÇÃO DE SERVIÇOS", 148.5, 16, { align: 'center' });
-    doc.setFontSize(10); 
-    doc.text(`Data: ${lote.data.split('-').reverse().join('/')}`, 148.5, 22, { align: 'center' });
+    const doc = new jsPDF('p', 'mm', 'a4'); 
     
+    // 1. Cabeçalho Dinâmico
+    try { doc.addImage(logoCarvalho, 'PNG', 15, 10, 35, 10); } catch(e){}
+    doc.setFont("helvetica", "bold"); 
+    doc.setFontSize(12); 
+    doc.text(DADOS_EMPRESA.razaoSocial, 105, 14, { align: 'center' });
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`CNPJ: ${DADOS_EMPRESA.cnpj}`, 105, 19, { align: 'center' });
+    doc.text(`${DADOS_EMPRESA.endereco} | ${DADOS_EMPRESA.cidadeEstado}`, 105, 23, { align: 'center' });
+    
+    doc.setLineWidth(0.5); 
+    doc.line(15, 27, 195, 27);
+
+    // 2. Título do Documento
+    doc.setFont("helvetica", "bold"); doc.setFontSize(14); 
+    doc.text("DIÁRIO DE OBRA - PRESTAÇÃO DE SERVIÇOS", 105, 36, { align: 'center' });
+    doc.setFontSize(10); doc.setFont("helvetica", "normal");
+    doc.text(`Data do Relatório: ${lote.data.split('-').reverse().join('/')}`, 105, 42, { align: 'center' });
+    
+    // 3. Tabela (Redimensionada para caber na vertical)
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
     renderTable(doc, {
-      startY: 30,
-      head: [["Descrição do Serviço", "Horário", "Equipe Envolvida", "Validação Carvalho", "Validação Rotem"]],
+      startY: 48,
+      head: [["Descrição", "Horário", "Equipe", "Validação Carvalho", "Validação Rotem"]],
       body: lote.servicos.map((s: any) => [`${s.servico}\nResp: ${s.responsavelRotem}`, `${s.horaInicio}\nàs ${s.horaTermino}`, s.equipe.join(', '), '', '']),
       theme: 'grid',
       styles: { fontSize: 8, cellPadding: 3, valign: 'middle' },
       headStyles: { fillColor: [30, 41, 59], halign: 'center' },
       columnStyles: { 
-        0: { cellWidth: 70 }, 1: { halign: 'center', cellWidth: 20 }, 
-        2: { cellWidth: 50 }, 3: { halign: 'center', cellWidth: 50 }, 4: { halign: 'center', cellWidth: 50 } 
+        0: { cellWidth: 45 }, // Mais estreito que antes
+        1: { halign: 'center', cellWidth: 20 }, 
+        2: { cellWidth: 35 }, 
+        3: { halign: 'center', cellWidth: 40 }, // Ajustado para folha vertical
+        4: { halign: 'center', cellWidth: 40 } 
       },
       didDrawCell: (data: any) => {
         if (data.cell.section === 'body' && (data.column.index === 3 || data.column.index === 4)) {
@@ -195,19 +204,19 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
           const servicoReferencia = lote.servicos[rowIndex];
           const isCarvalho = data.column.index === 3;
           
-          // Puxa a assinatura correta (A Carvalho é única, a Rotem depende de quem é o responsável por aquele serviço)
           const assinatura = isCarvalho ? lote.assinaturaCarvalho : lote.assinaturasRotem[servicoReferencia.responsavelRotem];
           const nomeLider = isCarvalho ? "Líder Carvalho" : servicoReferencia.responsavelRotem;
           
           if (assinatura && assinatura.startsWith('data:image')) {
             try {
-              doc.addImage(assinatura, 'JPEG', data.cell.x + 5, data.cell.y + 2, 40, 10);
+              // Ajustámos a posição e o tamanho da imagem da assinatura para a nova largura
+              doc.addImage(assinatura, 'JPEG', data.cell.x + 2, data.cell.y + 2, 36, 9);
               doc.setFontSize(6); 
-              doc.text(nomeLider, data.cell.x + 25, data.cell.y + 15, { align: 'center' });
+              doc.text(nomeLider, data.cell.x + 20, data.cell.y + 14, { align: 'center' });
             } catch(e) {}
           } else {
-            doc.setFontSize(8); doc.setTextColor(220, 38, 38);
-            doc.text("PENDENTE", data.cell.x + 25, data.cell.y + 10, { align: 'center' });
+            doc.setFontSize(7); doc.setTextColor(220, 38, 38);
+            doc.text("PENDENTE", data.cell.x + 20, data.cell.y + 8, { align: 'center' });
             doc.setTextColor(0,0,0);
           }
         }
@@ -299,7 +308,6 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           {atividades.map((a: any) => {
             const concluido = a.status === 'Concluído';
-            // Array com os nomes únicos dos responsáveis da Rotem que estão neste lote
             const nomesRotemNoLote = Object.keys(a.assinaturasRotem || {});
             
             return (
@@ -321,7 +329,6 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
                 {/* BOTÕES DE ASSINATURA LOCAL DINÂMICOS */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '15px' }}>
                   
-                  {/* Assinatura Líder Carvalho */}
                   {a.assinaturaCarvalho === 'pendente' ? (
                     <Button onClick={() => { setLoteParaAssinar(a); setQuemAssina('carvalho'); setModalAssinaturaAberto(true); }} style={{ width: '100%', height: '35px', fontSize: '12px', backgroundColor: '#3b82f6' }}>
                       Assinar Líder Carvalho
@@ -332,7 +339,6 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
                     </div>
                   )}
 
-                  {/* Assinaturas Dinâmicas Rotem (Uma para cada responsável) */}
                   {nomesRotemNoLote.map(nomeRotem => (
                     a.assinaturasRotem[nomeRotem] === 'pendente' ? (
                       <Button key={nomeRotem} onClick={() => { setLoteParaAssinar(a); setQuemAssina(nomeRotem); setModalAssinaturaAberto(true); }} style={{ width: '100%', height: '35px', fontSize: '12px', backgroundColor: '#f59e0b' }}>
@@ -353,7 +359,6 @@ export default function CronogramaServicos({ setorAtivo, funcionarios, avisar }:
         </div>
       </div>
 
-      {/* COMPONENTE MODAL DE ASSINATURA LOCAL */}
       <ModalAssinaturaEntrega 
         aberto={modalAssinaturaAberto} 
         onClose={() => setModalAssinaturaAberto(false)} 

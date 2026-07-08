@@ -6,11 +6,10 @@ import jsPDF from "jspdf";
 import logoCarvalho from '../../assets/logopdf.png';
 import { DADOS_EMPRESA } from '../../config/empresa';
 
-import { X, Handshake, FileText, CheckCircle2, AlertCircle, PenTool, Printer, Clock } from 'lucide-react';
+import { X, Handshake, FileText, CheckCircle2, PenTool, Printer, Clock, Users } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 
-// Importamos o modal de assinatura que já usamos no sistema
 import ModalAssinaturaEntrega from '../entrega/ModalAssinaturaEntrega';
 
 interface Props {
@@ -20,24 +19,24 @@ interface Props {
   avisar: (msg: string, tipo?: 'sucesso' | 'erro') => void;
 }
 
-// 📝 TEMPLATES PRÉ-PRONTOS (Fáceis de editar e expandir)
+// 📝 TEMPLATES PRÉ-PRONTOS (Atualizados sem a palavra "INDIVIDUAL")
 const TEMPLATES = [
   { 
     id: 'feriado_9_julho', 
-    nome: 'Troca de Feriado (9 de Julho)', 
-    titulo: 'ACORDO INDIVIDUAL DE COMPENSAÇÃO DE FERIADO', 
+    nome: 'Troca de Feriado', 
+    titulo: 'ACORDO DE COMPENSAÇÃO DE FERIADO', 
     texto: 'Pelo presente instrumento, acordam a EMPRESA e o COLABORADOR que haverá expediente normal de trabalho no feriado do dia 09/07/2026 (Quinta-feira).\n\nEm compensação, o colaborador gozará de folga no dia 10/07/2026 (Sexta-feira), não havendo descontos em sua remuneração nem pagamento de horas extras referentes a esta troca, conforme preceitua a legislação trabalhista vigente e o mútuo acordo entre as partes.' 
   },
   { 
     id: 'banco_horas', 
-    nome: 'Adesão ao Banco de Horas', 
-    titulo: 'ACORDO INDIVIDUAL DE BANCO DE HORAS', 
+    nome: 'Banco de Horas', 
+    titulo: 'ACORDO DE BANCO DE HORAS', 
     texto: 'Pelo presente, o COLABORADOR concorda com a instituição do sistema de compensação de horas de trabalho (Banco de Horas). As horas excedentes trabalhadas em um dia serão compensadas com a correspondente diminuição em outro dia, conforme a necessidade da empresa e alinhamento prévio.' 
   },
   { 
     id: 'livre', 
-    nome: 'Acordo Livre / Em Branco', 
-    titulo: 'TERMO DE ACORDO INDIVIDUAL', 
+    nome: 'Em Branco', 
+    titulo: 'TERMO DE ACORDO', 
     texto: '' 
   }
 ];
@@ -46,16 +45,14 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
   const [abaAtiva, setAbaAtiva] = useState<'novo' | 'lista'>('novo');
   const [acordos, setAcordos] = useState<any[]>([]);
   
-  // Estados do Formulário
-  const [funcionarioId, setFuncionarioId] = useState('');
+  // ✨ NOVO: Array para guardar múltiplos funcionários selecionados
+  const [funcionariosSelecionados, setFuncionariosSelecionados] = useState<string[]>([]);
   const [titulo, setTitulo] = useState('');
   const [conteudo, setConteudo] = useState('');
   
-  // Estados de Assinatura
   const [modalAssinatura, setModalAssinatura] = useState(false);
   const [acordoParaAssinar, setAcordoParaAssinar] = useState<any>(null);
 
-  // Busca os acordos no Firebase
   useEffect(() => {
     if (!aberto) return;
     const q = query(collection(db, 'acordos_colaboradores'));
@@ -67,7 +64,6 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     return () => unsub();
   }, [aberto]);
 
-  // Aplica o Template selecionado ao formulário
   const aplicarTemplate = (idTemplate: string) => {
     const template = TEMPLATES.find(t => t.id === idTemplate);
     if (template) {
@@ -76,25 +72,46 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     }
   };
 
+  // ✨ NOVO: Função para alternar a seleção de um funcionário
+  const toggleFuncionario = (id: string) => {
+    setFuncionariosSelecionados(prev => 
+      prev.includes(id) ? prev.filter(fId => fId !== id) : [...prev, id]
+    );
+  };
+
+  // ✨ NOVO: Salva um documento para CADA funcionário selecionado
   const salvarNovoAcordo = async () => {
-    if (!funcionarioId || !titulo || !conteudo) return avisar("Preencha todos os campos obrigatórios.", "erro");
+    if (funcionariosSelecionados.length === 0) return avisar("Selecione pelo menos um colaborador.", "erro");
+    if (!titulo || !conteudo) return avisar("Preencha o título e o conteúdo do acordo.", "erro");
     
-    const func = funcionarios.find(f => f.id === funcionarioId);
     try {
-      await addDoc(collection(db, 'acordos_colaboradores'), {
-        funcionarioId: func.id,
-        funcionarioNome: func.nome,
-        funcionarioCpf: func.cpf || 'Não informado',
-        titulo,
-        conteudo,
-        status: 'pendente', // Nasce pendente de assinatura
-        assinaturaBase64: '',
-        createdAt: serverTimestamp()
-      });
-      avisar("Acordo gerado e enviado para pendências!");
-      setFuncionarioId(''); setTitulo(''); setConteudo(''); setAbaAtiva('lista');
+      // Loop: Cria um documento individual no Firebase para cada pessoa selecionada
+      for (const id of funcionariosSelecionados) {
+        const func = funcionarios.find(f => f.id === id);
+        if (func) {
+          await addDoc(collection(db, 'acordos_colaboradores'), {
+            funcionarioId: func.id,
+            funcionarioNome: func.nome,
+            funcionarioCpf: func.cpf || 'Não informado',
+            titulo,
+            conteudo,
+            status: 'pendente',
+            assinaturaBase64: '',
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+      
+      avisar(`Acordo gerado para ${funcionariosSelecionados.length} colaborador(es)!`);
+      
+      // Limpa o formulário
+      setFuncionariosSelecionados([]); 
+      setTitulo(''); 
+      setConteudo(''); 
+      setAbaAtiva('lista');
+      
     } catch (e) {
-      avisar("Erro ao salvar acordo.", "erro");
+      avisar("Erro ao salvar acordos.", "erro");
     }
   };
 
@@ -114,59 +131,53 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     }
   };
 
-  // 📄 GERADOR DE PDF PROFISSIONAL (Com Cabeçalho Dinâmico)
+  // 📄 GERADOR DE PDF PROFISSIONAL (Com Espaçamento Corrigido)
   const gerarPDF = (acordo: any, tipo: 'digital' | 'branco') => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     
-    // --- CABEÇALHO DA EMPRESA ---
+    // 1. Cabeçalho
     try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 35, 10); } catch(e){}
-    
-    docPdf.setFont("helvetica", "bold"); 
-    docPdf.setFontSize(12); 
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(12); 
     docPdf.text(DADOS_EMPRESA.razaoSocial, 105, 14, { align: 'center' });
-    
-    docPdf.setFont("helvetica", "normal");
-    docPdf.setFontSize(9);
+    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(9);
     docPdf.text(`CNPJ: ${DADOS_EMPRESA.cnpj}`, 105, 19, { align: 'center' });
     docPdf.text(`${DADOS_EMPRESA.endereco} | ${DADOS_EMPRESA.cidadeEstado}`, 105, 23, { align: 'center' });
     
-    // Linha divisória
-    docPdf.setLineWidth(0.5); 
-    docPdf.line(15, 27, 195, 27);
+    docPdf.setLineWidth(0.5); docPdf.line(15, 27, 195, 27);
 
-    // --- CORPO DO DOCUMENTO ---
-    docPdf.setFont("helvetica", "bold"); 
-    docPdf.setFontSize(14); 
+    // 2. Corpo do Acordo
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(14); 
     docPdf.text(acordo.titulo, 105, 40, { align: 'center' });
 
-    docPdf.setFontSize(11); 
-    docPdf.setFont("helvetica", "normal");
+    docPdf.setFontSize(11); docPdf.setFont("helvetica", "normal");
     
-    // Texto Introdutório Padrão
     const intro = `Pelo presente instrumento, de um lado a empresa ${DADOS_EMPRESA.razaoSocial}, inscrita no CNPJ sob o nº ${DADOS_EMPRESA.cnpj}, e de outro lado o colaborador ${acordo.funcionarioNome.toUpperCase()}, portador(a) do CPF ${acordo.funcionarioCpf}, firmam o seguinte acordo:`;
     const splitIntro = docPdf.splitTextToSize(intro, 170);
     docPdf.text(splitIntro, 20, 52);
 
-    // Texto Editado do Acordo
     const yConteudo = 52 + (splitIntro.length * 6) + 10;
     const splitConteudo = docPdf.splitTextToSize(acordo.conteudo, 170);
     docPdf.text(splitConteudo, 20, yConteudo);
 
-    // --- ASSINATURAS ---
-    const yAssinatura = yConteudo + (splitConteudo.length * 6) + 30;
+    // ✨ CORREÇÃO AQUI: Aumentámos o salto (espaço) para a área de assinatura
+    const yAssinatura = yConteudo + (splitConteudo.length * 6) + 50;
     
     const dataFormatada = acordo.dataAssinatura 
       ? new Date(acordo.dataAssinatura).toLocaleDateString('pt-BR') 
       : new Date().toLocaleDateString('pt-BR');
       
-    docPdf.text(`${DADOS_EMPRESA.cidadeEstado.split(' - ')[0]}, ${dataFormatada}`, 105, yAssinatura - 20, { align: 'center' });
+    const cidade = DADOS_EMPRESA.cidadeEstado.split(' - ')[0];
+    
+    // A data fica 30 milímetros acima da linha
+    docPdf.text(`${cidade}, ${dataFormatada}`, 105, yAssinatura - 30, { align: 'center' });
 
+    // A linha de assinatura
     docPdf.setDrawColor(0,0,0);
     docPdf.line(60, yAssinatura, 150, yAssinatura);
     
-    // Se for digital, insere a assinatura. Se for em branco, deixa só a linha pronta para a caneta.
+    // A imagem apoia-se exatamente na linha (yAssinatura - 25), sem sobrepor a data
     if (tipo === 'digital' && acordo.assinaturaBase64) {
-      try { docPdf.addImage(acordo.assinaturaBase64, 'JPEG', 85, yAssinatura - 22, 40, 20); } catch(e){}
+      try { docPdf.addImage(acordo.assinaturaBase64, 'JPEG', 85, yAssinatura - 25, 40, 20); } catch(e){}
     }
 
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(10);
@@ -176,13 +187,13 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
 
     docPdf.save(`Acordo_${acordo.funcionarioNome.split(' ')[0]}_${acordo.titulo.substring(0, 15)}.pdf`);
   };
+
   if (!aberto) return null;
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', zIndex: 15000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', zIndex: 15000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
       <div style={{ backgroundColor: '#f8fafc', width: '100%', maxWidth: '800px', height: '90vh', borderRadius: '20px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
         
-        {/* HEADER DO MODAL */}
         <div style={{ padding: '20px', backgroundColor: 'white', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ backgroundColor: '#f0fdf4', padding: '10px', borderRadius: '10px' }}><Handshake size={24} color="#10b981" /></div>
@@ -194,24 +205,37 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
           <button onClick={onClose} style={{ background: '#f1f5f9', border: 'none', padding: '10px', borderRadius: '50%', cursor: 'pointer' }}><X size={20} color="#475569" /></button>
         </div>
 
-        {/* NAVEGAÇÃO DE ABAS */}
         <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white' }}>
-          <button onClick={() => setAbaAtiva('novo')} style={{ flex: 1, padding: '15px', border: 'none', background: abaAtiva === 'novo' ? '#f8fafc' : 'white', borderBottom: abaAtiva === 'novo' ? '3px solid #10b981' : '3px solid transparent', fontWeight: 'bold', color: abaAtiva === 'novo' ? '#10b981' : '#64748b', cursor: 'pointer' }}>Gerar Novo Acordo</button>
-          <button onClick={() => setAbaAtiva('lista')} style={{ flex: 1, padding: '15px', border: 'none', background: abaAtiva === 'lista' ? '#f8fafc' : 'white', borderBottom: abaAtiva === 'lista' ? '3px solid #3b82f6' : '3px solid transparent', fontWeight: 'bold', color: abaAtiva === 'lista' ? '#3b82f6' : '#64748b', cursor: 'pointer' }}>Acordos e Pendências ({acordos.length})</button>
+          <button onClick={() => setAbaAtiva('novo')} style={{ flex: 1, padding: '15px', border: 'none', background: abaAtiva === 'novo' ? '#f8fafc' : 'white', borderBottom: abaAtiva === 'novo' ? '3px solid #10b981' : '3px solid transparent', fontWeight: 'bold', color: abaAtiva === 'novo' ? '#10b981' : '#64748b', cursor: 'pointer' }}>Gerar Acordo</button>
+          <button onClick={() => setAbaAtiva('lista')} style={{ flex: 1, padding: '15px', border: 'none', background: abaAtiva === 'lista' ? '#f8fafc' : 'white', borderBottom: abaAtiva === 'lista' ? '3px solid #3b82f6' : '3px solid transparent', fontWeight: 'bold', color: abaAtiva === 'lista' ? '#3b82f6' : '#64748b', cursor: 'pointer' }}>Histórico / Pendências ({acordos.length})</button>
         </div>
 
-        {/* CONTEÚDO */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
           
           {abaAtiva === 'novo' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
+              {/* ✨ NOVO: Painel de Seleção Múltipla de Funcionários */}
               <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>1. Selecione o Colaborador</label>
-                <select value={funcionarioId} onChange={e => setFuncionarioId(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', outline: 'none' }}>
-                  <option value="">Selecione...</option>
-                  {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
-                </select>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '12px' }}>
+                  <Users size={16}/> 1. Selecione os Colaboradores ({funcionariosSelecionados.length} selecionados)
+                </label>
+                
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', maxHeight: '150px', overflowY: 'auto', padding: '5px' }}>
+                  {funcionarios.filter(f => f.status !== 'desligado').map(f => (
+                    <button 
+                      key={f.id} 
+                      onClick={() => toggleFuncionario(f.id)}
+                      style={{ 
+                        padding: '8px 12px', borderRadius: '50px', border: 'none', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', 
+                        backgroundColor: funcionariosSelecionados.includes(f.id) ? '#10b981' : '#f1f5f9', 
+                        color: funcionariosSelecionados.includes(f.id) ? 'white' : '#475569' 
+                      }}
+                    >
+                      {f.nome.split(' ')[0]} {f.nome.split(' ')[1] || ''}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -238,7 +262,7 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
               </div>
 
               <Button onClick={salvarNovoAcordo} style={{ height: '55px', fontSize: '16px', backgroundColor: '#10b981', fontWeight: 'bold' }}>
-                Gerar e Enviar para Assinatura
+                Gerar Acordos e Enviar para Assinatura
               </Button>
             </div>
           )}
@@ -285,7 +309,6 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
         </div>
       </div>
 
-      {/* Modal de Assinatura Embutido */}
       <ModalAssinaturaEntrega 
         aberto={modalAssinatura} 
         onClose={() => { setModalAssinatura(false); setAcordoParaAssinar(null); }} 
