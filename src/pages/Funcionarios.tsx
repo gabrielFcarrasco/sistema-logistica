@@ -11,6 +11,7 @@ import FormularioCadastro from '../components/funcionarios/FormularioCadastro';
 import ModalFicha from '../components/funcionarios/ModalFicha';
 import ModalTreinamentos from '../components/treinamentos/ModalTreinamentos';
 import ModalDSS from '../components/dss/ModalDSS';
+import ModalAcordos from '../components/funcionarios/ModalAcordos';
 
 export default function Funcionarios() {
   // Estados de Dados
@@ -26,6 +27,7 @@ export default function Funcionarios() {
   const [modalTreinamento, setModalTreinamento] = useState(false);
   const [modalDSS, setModalDSS] = useState(false);
   const [notificacao, setNotificacao] = useState<{msg: string, tipo: 'sucesso' | 'erro'} | null>(null);
+  const [modalAcordos, setModalAcordos] = useState(false);
 
   const avisar = (msg: string, tipo: 'sucesso' | 'erro' = 'sucesso') => {
     setNotificacao({ msg, tipo });
@@ -73,8 +75,12 @@ export default function Funcionarios() {
           <h1 style={{ fontSize: '24px', color: '#1e293b', margin: 0, fontWeight: '800' }}>Equipe e Qualificação</h1>
         </div>
         
-        {/* BOTÕES DOS MÓDULOS DE SEGURANÇA */}
+       {/* BOTÕES DOS MÓDULOS DE SEGURANÇA E RH */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <Button onClick={() => setModalAcordos(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#10b981', boxShadow: '0 4px 6px rgba(16, 185, 129, 0.2)' }}>
+            <FileText size={20} /> Acordos e Termos
+          </Button>
+
           <Button onClick={() => setModalDSS(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0ea5e9', boxShadow: '0 4px 6px rgba(14, 165, 233, 0.2)' }}>
             <ShieldCheck size={20} /> Diálogos de Segurança (DSS)
           </Button>
@@ -82,7 +88,7 @@ export default function Funcionarios() {
             <GraduationCap size={20} /> Treinamentos e NRs
           </Button>
         </div>
-      </div>
+      </div> {/* <-- FALTAVA FECHAR ESTA DIV AQUI! */}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
         
@@ -157,6 +163,14 @@ export default function Funcionarios() {
       <ModalDSS 
         aberto={modalDSS} 
         onClose={() => setModalDSS(false)} 
+        funcionarios={funcionarios} 
+        avisar={avisar} 
+      />
+
+      {/* 4. Modal do Módulo de Acordos e Termos */}
+      <ModalAcordos 
+        aberto={modalAcordos} 
+        onClose={() => setModalAcordos(false)} 
         funcionarios={funcionarios} 
         avisar={avisar} 
       />
