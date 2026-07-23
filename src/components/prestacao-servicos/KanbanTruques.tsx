@@ -11,6 +11,9 @@ import ModalChecklistJateamento from './ModalChecklistJateamento';
 import FormularioLancarTruque from './FormularioLancarTruque';
 import { baixarChecklistIndividual, baixarChecklistsDaSemana, gerarRelatorioTruques } from '../../utils/pdfTruques';
 
+// ✨ 1. Importar o novo Modal de Pintura
+import ModalRelatorioPintura from './ModalRelatorioPintura';
+
 interface Props { setorAtivo: string; funcionarios: any[]; avisar: (msg: string, tipo?: 'sucesso'|'erro') => void; }
 
 export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Props) {
@@ -18,8 +21,13 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   const [idsOcultos, setIdsOcultos] = useState<string[]>([]);
   const [novoValorGalpao, setNovoValorGalpao] = useState('');
 
+  // Estados para o Modal de Jateamento (Existente)[cite: 6]
   const [modalChecklistAberto, setModalChecklistAberto] = useState(false);
   const [truqueParaChecklist, setTruqueParaChecklist] = useState<any>(null);
+
+  // ✨ 2. Novos Estados para o Modal de Relatório de Pintura
+  const [modalPinturaAberto, setModalPinturaAberto] = useState(false);
+  const [truqueParaPintura, setTruqueParaPintura] = useState<any>(null);
 
   useEffect(() => {
     if (!setorAtivo) return;
@@ -37,6 +45,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
     catch (e) { avisar("Erro ao enviar para pintura.", "erro"); }
   };
 
+  // Esta função não vai ser mais chamada pelo botão diretamente, pois o modal tratará disso, mas mantemos para histórico
   const marcarComoPintado = async (id: string) => {
     try { await updateDoc(doc(db, 'truques_producao', id), { status: 'pintado', dataPintura: serverTimestamp() }); avisar("Enviado ao Galpão."); } 
     catch (e) { avisar("Erro.", "erro"); }
@@ -61,14 +70,12 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
       return;
     }
 
-    // Identifica quais peças serão "removidas" (ex: movidas para um status 'ajustado' ou 'arquivado')
     const paraRemover = [...todosPintados].sort(() => 0.5 - Math.random()).slice(0, quantidadeRemover);
 
     try {
-      // Atualiza cada uma no Firebase
       for (const t of paraRemover) {
         await updateDoc(doc(db, 'truques_producao', t.id), { 
-          status: 'ajustado_galpao' // Novo status para peças que saíram da contagem
+          status: 'ajustado_galpao' 
         });
       }
       setNovoValorGalpao('');
@@ -86,7 +93,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
       
-      {/* 1. MÓDULO LATERAL ISOLADO (FORMULÁRIO E BOTÕES PDF) */}
+      {/* MÓDULO LATERAL ISOLADO */}
       <FormularioLancarTruque 
         setorAtivo={setorAtivo}
         avisar={avisar}
@@ -94,10 +101,10 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
         onBaixarChecklistsSemana={() => baixarChecklistsDaSemana(truques, avisar)}
       />
 
-      {/* 2. COLUNAS DO KANBAN */}
+      {/* COLUNAS DO KANBAN */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        {/* Coluna Jateamento */}
+        {/* Coluna Jateamento (Mantida igual)[cite: 6] */}
         <div style={{ backgroundColor: '#f1f5f9', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#334155' }}>1. Lavagem / Jateamento ({truquesAguardandoJateamento.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
@@ -112,7 +119,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           </div>
         </div>
         
-        {/* Coluna PM */}
+        {/* Coluna PM (Mantida igual)[cite: 6] */}
         <div style={{ backgroundColor: '#fffbeb', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#b45309' }}>2. Partículas Magnéticas (PM) ({truquesAguardandoPM.length})</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
@@ -139,7 +146,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           </div>
         </div>
 
-        {/* Coluna Pintura */}
+        {/* Coluna Pintura (ATUALIZADA) */}
         <div style={{ backgroundColor: '#eff6ff', padding: '20px', borderRadius: '16px' }}>
           <h4 style={{ margin: '0 0 15px 0', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Paintbrush size={18} /> 3. Pintura ({truquesAguardandoPintura.length})
@@ -149,18 +156,14 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
               <div key={t.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong>{t.identificacao}</strong>
-                  {t.checklistJateamento && (
-                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist Original">
-                      <FileDown size={20} />
-                    </button>
-                  )}
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <Button onClick={() => voltarEtapa(t.id, 'analisado_pm')} style={{ backgroundColor: '#f1f5f9', color: '#64748b', padding: '8px 10px' }} title="Voltar para PM">
                     <Undo2 size={16}/>
                   </Button>
-                  <Button onClick={() => marcarComoPintado(t.id)} style={{ backgroundColor: '#10b981', padding: '8px 12px', flex: 1 }}>
-                    Concluir <Check size={14}/>
+                  {/* ✨ 3. O botão agora abre o Modal em vez de apenas marcar como pintado */}
+                  <Button onClick={() => { setTruqueParaPintura(t); setModalPinturaAberto(true); }} style={{ backgroundColor: '#10b981', padding: '8px 12px', flex: 1 }}>
+                    Aprovar Pintura <Check size={14}/>
                   </Button>
                 </div>
               </div>
@@ -168,7 +171,7 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
           </div>
         </div>
 
-        {/* Coluna Galpão */}
+        {/* Coluna Galpão (Mantida igual)[cite: 6] */}
         <div style={{ backgroundColor: '#f0fdf4', padding: '20px', borderRadius: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h4 style={{ margin: 0, color: '#166534' }}>4. Galpão ({truquesConcluidos.length})</h4>
@@ -183,11 +186,6 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
               <div key={t.id} style={{ backgroundColor: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #86efac', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 'bold', color: '#15803d' }}>{t.identificacao}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {t.checklistJateamento && (
-                    <button onClick={() => baixarChecklistIndividual(t)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer' }} title="Baixar Checklist">
-                      <FileDown size={18} />
-                    </button>
-                  )}
                   <Button onClick={() => voltarEtapa(t.id, 'pronto_pintura')} style={{ backgroundColor: 'transparent', color: '#15803d', padding: '4px', border: 'none' }} title="Desfazer (Voltar para Pintura)">
                     <Undo2 size={16}/>
                   </Button>
@@ -200,11 +198,20 @@ export default function KanbanTruques({ setorAtivo, funcionarios, avisar }: Prop
 
       </div>
 
+      {/* Renderização dos Modais */}
       <ModalChecklistJateamento 
         aberto={modalChecklistAberto}
         truque={truqueParaChecklist}
         funcionarios={funcionarios}
         onClose={() => { setModalChecklistAberto(false); setTruqueParaChecklist(null); }}
+        avisar={avisar}
+      />
+
+      {/* ✨ 4. Componente do Modal de Relatório de Pintura */}
+      <ModalRelatorioPintura 
+        aberto={modalPinturaAberto}
+        truque={truqueParaPintura}
+        onClose={() => { setModalPinturaAberto(false); setTruqueParaPintura(null); }}
         avisar={avisar}
       />
     </div>
