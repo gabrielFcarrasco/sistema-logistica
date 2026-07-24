@@ -19,7 +19,7 @@ interface Props {
   avisar: (msg: string, tipo?: 'sucesso' | 'erro') => void;
 }
 
-// ✨ TEMPLATES ATUALIZADOS COM A NOVA DISPENSA
+// ✨ TEMPLATES ATUALIZADOS: Adicionamos as duas opções de dispensa
 const TEMPLATES = [
   { 
     id: 'feriado_9_julho', 
@@ -35,9 +35,16 @@ const TEMPLATES = [
   },
   {
     id: 'dispensa_compensacao',
-    nome: 'Dispensa com Compensação',
+    nome: 'Dispensa (Com Compensação)',
     titulo: 'ACORDO DE DISPENSA E COMPENSAÇÃO DE HORAS',
     texto: 'Pelo presente instrumento, acordam a EMPRESA e o COLABORADOR que haverá a dispensa do colaborador de suas atividades laborais, mediante solicitação ou alinhamento prévio.\n\nAs horas não trabalhadas neste período serão registradas como saldo a compensar em seu Banco de Horas, devendo ser pagas posteriormente através de horas extras, conforme a necessidade e programação da empresa.'
+  },
+  {
+    // ✨ NOVO MODELO: Dispensa sem dever horas
+    id: 'dispensa_sem_compensacao',
+    nome: 'Dispensa (Sem Compensação)',
+    titulo: 'ACORDO DE DISPENSA E ABONO DE HORAS',
+    texto: 'Pelo presente instrumento, acordam a EMPRESA e o COLABORADOR que haverá a dispensa do colaborador de suas atividades laborais, mediante solicitação ou alinhamento prévio.\n\nFica acordado que as horas não trabalhadas neste período serão integralmente abonadas pela empresa, não gerando saldo devedor no Banco de Horas do colaborador e não implicando em quaisquer descontos na sua remuneração mensal.'
   },
   { 
     id: 'livre', 
@@ -55,6 +62,7 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
   const [titulo, setTitulo] = useState('');
   const [conteudo, setConteudo] = useState('');
   
+  // O estado do horário continua aqui, mas o seu preenchimento é opcional
   const [horarioSaida, setHorarioSaida] = useState('');
   
   const [modalAssinatura, setModalAssinatura] = useState(false);
@@ -85,7 +93,7 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     );
   };
 
-  // ✨ CALCULADORA DE HORAS INTELIGENTE (SUPORTA HORAS EXTRAS E SAÍDAS ANTECIPADAS)
+  // Lógica da calculadora mantida
   const adicionarCalculoHorasExtras = () => {
     if (!horarioSaida) {
       return avisar("Preencha o horário de saída primeiro.", "erro");
@@ -112,11 +120,9 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     let paragrafoExtra = '';
     
     if (isHoraExtra) {
-      // Cenário 1: Saiu mais tarde (Horas Extras)
       paragrafoExtra = `\n\nFica registrado o horário de saída às ${horarioSaida}. Considerando a jornada de trabalho regular (das 08:00 às 17:48 com 1h de intervalo), contabiliza-se um saldo excedente de ${textoHoras} que será computado no Banco de Horas do colaborador para posterior compensação.`;
     } else {
-      // Cenário 2: Saiu mais cedo (Dispensa/Horas a compensar)
-      paragrafoExtra = `\n\nFica registrado o horário de saída antecipada às ${horarioSaida}. Considerando a jornada de trabalho regular (das 08:00 às 17:48 com 1h de intervalo), contabiliza-se um saldo devedor (a compensar) de ${textoHoras}. Este saldo será registrado no Banco de Horas do colaborador para compensação futura.`;
+      paragrafoExtra = `\n\nFica registrado o horário de saída antecipada às ${horarioSaida}. Considerando a jornada de trabalho regular (das 08:00 às 17:48 com 1h de intervalo), a diferença de ${textoHoras} foi processada conforme as regras de compensação ou abono acordadas acima.`;
     }
 
     setConteudo(prev => prev + paragrafoExtra);
@@ -126,6 +132,7 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
 
   const salvarNovoAcordo = async () => {
     if (funcionariosSelecionados.length === 0) return avisar("Selecione pelo menos um colaborador.", "erro");
+    // O sistema só valida o título e o conteúdo, o horário fica totalmente opcional[cite: 8]
     if (!titulo || !conteudo) return avisar("Preencha o título e o conteúdo do acordo.", "erro");
     
     try {
@@ -150,6 +157,7 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
       setFuncionariosSelecionados([]); 
       setTitulo(''); 
       setConteudo(''); 
+      setHorarioSaida(''); // Limpa também o horário se foi usado
       setAbaAtiva('lista');
       
     } catch (e) {
@@ -272,7 +280,7 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
               </div>
 
               <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>2. Escolha um Modelo Pré-pronto (Opcional)</label>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>2. Escolha um Modelo Pré-pronto</label>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
                   {TEMPLATES.map(t => (
                     <button key={t.id} onClick={() => aplicarTemplate(t.id)} style={{ padding: '8px 15px', borderRadius: '50px', border: '1px solid #10b981', backgroundColor: '#f0fdf4', color: '#166534', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
@@ -283,14 +291,14 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
 
                 <Input label="Título do Acordo" value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Ex: Acordo de Compensação..." />
                 
-                {/* Seção de Cálculo de Horas */}
-                <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                {/* ✨ ATUALIZADO: Deixámos claro visualmente que a calculadora é (Opcional) */}
+                <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
                   <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                     <Calculator size={16} color="#3b82f6" />
-                    Cálculo Automático de Horas (Extras ou Saída Antecipada)
+                    Ferramenta Auxiliar: Cálculo Automático de Horas <span style={{color: '#94a3b8', fontSize: '11px'}}>(Opcional)</span>
                   </label>
                   <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px', lineHeight: '1.4' }}>
-                    Jornada padrão: <strong>08:00 às 17:48</strong>. O sistema detectará automaticamente se o horário gera saldo positivo ou negativo.
+                    Apenas se necessitares de contabilizar horas no texto. Jornada padrão: <strong>08:00 às 17:48</strong>.
                   </p>
                   
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
@@ -307,17 +315,17 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
                       disabled={!horarioSaida}
                       style={{ backgroundColor: '#3b82f6', height: '42px', fontSize: '13px' }}
                     >
-                      Calcular e Adicionar ao Texto
+                      Calcular e Inserir no Texto
                     </Button>
                   </div>
                 </div>
 
                 <div style={{ marginTop: '15px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>Corpo do Acordo (Editável)</label>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>Corpo do Acordo (Totalmente Editável)</label>
                   <textarea 
                     value={conteudo} 
                     onChange={e => setConteudo(e.target.value)} 
-                    placeholder="Redija o texto do acordo aqui..." 
+                    placeholder="Seleciona um modelo acima ou redige o texto do acordo aqui..." 
                     style={{ width: '100%', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1', minHeight: '180px', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
                   />
                 </div>
