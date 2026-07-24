@@ -6,7 +6,7 @@ import jsPDF from "jspdf";
 import logoCarvalho from '../../assets/logopdf.png';
 import { DADOS_EMPRESA } from '../../config/empresa';
 
-import { X, Handshake, FileText, CheckCircle2, PenTool, Printer, Clock, Users } from 'lucide-react';
+import { X, Handshake, FileText, CheckCircle2, PenTool, Printer, Clock, Users, Calculator } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 
@@ -19,7 +19,7 @@ interface Props {
   avisar: (msg: string, tipo?: 'sucesso' | 'erro') => void;
 }
 
-// 📝 TEMPLATES PRÉ-PRONTOS (Atualizados sem a palavra "INDIVIDUAL")
+// ✨ TEMPLATES ATUALIZADOS COM A NOVA DISPENSA
 const TEMPLATES = [
   { 
     id: 'feriado_9_julho', 
@@ -33,6 +33,12 @@ const TEMPLATES = [
     titulo: 'ACORDO DE BANCO DE HORAS', 
     texto: 'Pelo presente, o COLABORADOR concorda com a instituição do sistema de compensação de horas de trabalho (Banco de Horas). As horas excedentes trabalhadas em um dia serão compensadas com a correspondente diminuição em outro dia, conforme a necessidade da empresa e alinhamento prévio.' 
   },
+  {
+    id: 'dispensa_compensacao',
+    nome: 'Dispensa com Compensação',
+    titulo: 'ACORDO DE DISPENSA E COMPENSAÇÃO DE HORAS',
+    texto: 'Pelo presente instrumento, acordam a EMPRESA e o COLABORADOR que haverá a dispensa do colaborador de suas atividades laborais, mediante solicitação ou alinhamento prévio.\n\nAs horas não trabalhadas neste período serão registradas como saldo a compensar em seu Banco de Horas, devendo ser pagas posteriormente através de horas extras, conforme a necessidade e programação da empresa.'
+  },
   { 
     id: 'livre', 
     nome: 'Em Branco', 
@@ -45,10 +51,11 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
   const [abaAtiva, setAbaAtiva] = useState<'novo' | 'lista'>('novo');
   const [acordos, setAcordos] = useState<any[]>([]);
   
-  // ✨ NOVO: Array para guardar múltiplos funcionários selecionados
   const [funcionariosSelecionados, setFuncionariosSelecionados] = useState<string[]>([]);
   const [titulo, setTitulo] = useState('');
   const [conteudo, setConteudo] = useState('');
+  
+  const [horarioSaida, setHorarioSaida] = useState('');
   
   const [modalAssinatura, setModalAssinatura] = useState(false);
   const [acordoParaAssinar, setAcordoParaAssinar] = useState<any>(null);
@@ -72,20 +79,56 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     }
   };
 
-  // ✨ NOVO: Função para alternar a seleção de um funcionário
   const toggleFuncionario = (id: string) => {
     setFuncionariosSelecionados(prev => 
       prev.includes(id) ? prev.filter(fId => fId !== id) : [...prev, id]
     );
   };
 
-  // ✨ NOVO: Salva um documento para CADA funcionário selecionado
+  // ✨ CALCULADORA DE HORAS INTELIGENTE (SUPORTA HORAS EXTRAS E SAÍDAS ANTECIPADAS)
+  const adicionarCalculoHorasExtras = () => {
+    if (!horarioSaida) {
+      return avisar("Preencha o horário de saída primeiro.", "erro");
+    }
+
+    const [h, m] = horarioSaida.split(':').map(Number);
+    const minutosSaida = (h * 60) + m;
+    const minutosPadrao = (17 * 60) + 48; // 17:48 = 1068 minutos
+
+    if (minutosSaida === minutosPadrao) {
+      return avisar("O horário inserido é exatamente o fim da jornada (sem diferença de horas).", "erro");
+    }
+
+    const isHoraExtra = minutosSaida > minutosPadrao;
+    const diffMinutos = Math.abs(minutosSaida - minutosPadrao);
+    const horas = Math.floor(diffMinutos / 60);
+    const minutos = diffMinutos % 60;
+
+    let textoHoras = '';
+    if (horas > 0) textoHoras += `${horas} hora(s)`;
+    if (horas > 0 && minutos > 0) textoHoras += ` e `;
+    if (minutos > 0) textoHoras += `${minutos} minuto(s)`;
+
+    let paragrafoExtra = '';
+    
+    if (isHoraExtra) {
+      // Cenário 1: Saiu mais tarde (Horas Extras)
+      paragrafoExtra = `\n\nFica registrado o horário de saída às ${horarioSaida}. Considerando a jornada de trabalho regular (das 08:00 às 17:48 com 1h de intervalo), contabiliza-se um saldo excedente de ${textoHoras} que será computado no Banco de Horas do colaborador para posterior compensação.`;
+    } else {
+      // Cenário 2: Saiu mais cedo (Dispensa/Horas a compensar)
+      paragrafoExtra = `\n\nFica registrado o horário de saída antecipada às ${horarioSaida}. Considerando a jornada de trabalho regular (das 08:00 às 17:48 com 1h de intervalo), contabiliza-se um saldo devedor (a compensar) de ${textoHoras}. Este saldo será registrado no Banco de Horas do colaborador para compensação futura.`;
+    }
+
+    setConteudo(prev => prev + paragrafoExtra);
+    setHorarioSaida(''); 
+    avisar("Cálculo adicionado ao corpo do acordo!");
+  };
+
   const salvarNovoAcordo = async () => {
     if (funcionariosSelecionados.length === 0) return avisar("Selecione pelo menos um colaborador.", "erro");
     if (!titulo || !conteudo) return avisar("Preencha o título e o conteúdo do acordo.", "erro");
     
     try {
-      // Loop: Cria um documento individual no Firebase para cada pessoa selecionada
       for (const id of funcionariosSelecionados) {
         const func = funcionarios.find(f => f.id === id);
         if (func) {
@@ -104,7 +147,6 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
       
       avisar(`Acordo gerado para ${funcionariosSelecionados.length} colaborador(es)!`);
       
-      // Limpa o formulário
       setFuncionariosSelecionados([]); 
       setTitulo(''); 
       setConteudo(''); 
@@ -131,11 +173,9 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     }
   };
 
-  // 📄 GERADOR DE PDF PROFISSIONAL (Com Espaçamento Corrigido)
   const gerarPDF = (acordo: any, tipo: 'digital' | 'branco') => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     
-    // 1. Cabeçalho
     try { docPdf.addImage(logoCarvalho, 'PNG', 15, 10, 35, 10); } catch(e){}
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(12); 
     docPdf.text(DADOS_EMPRESA.razaoSocial, 105, 14, { align: 'center' });
@@ -145,7 +185,6 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     
     docPdf.setLineWidth(0.5); docPdf.line(15, 27, 195, 27);
 
-    // 2. Corpo do Acordo
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(14); 
     docPdf.text(acordo.titulo, 105, 40, { align: 'center' });
 
@@ -159,7 +198,6 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
     const splitConteudo = docPdf.splitTextToSize(acordo.conteudo, 170);
     docPdf.text(splitConteudo, 20, yConteudo);
 
-    // ✨ CORREÇÃO AQUI: Aumentámos o salto (espaço) para a área de assinatura
     const yAssinatura = yConteudo + (splitConteudo.length * 6) + 50;
     
     const dataFormatada = acordo.dataAssinatura 
@@ -168,14 +206,10 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
       
     const cidade = DADOS_EMPRESA.cidadeEstado.split(' - ')[0];
     
-    // A data fica 30 milímetros acima da linha
     docPdf.text(`${cidade}, ${dataFormatada}`, 105, yAssinatura - 30, { align: 'center' });
-
-    // A linha de assinatura
     docPdf.setDrawColor(0,0,0);
     docPdf.line(60, yAssinatura, 150, yAssinatura);
     
-    // A imagem apoia-se exatamente na linha (yAssinatura - 25), sem sobrepor a data
     if (tipo === 'digital' && acordo.assinaturaBase64) {
       try { docPdf.addImage(acordo.assinaturaBase64, 'JPEG', 85, yAssinatura - 25, 40, 20); } catch(e){}
     }
@@ -215,7 +249,6 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
           {abaAtiva === 'novo' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* ✨ NOVO: Painel de Seleção Múltipla de Funcionários */}
               <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                 <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '12px' }}>
                   <Users size={16}/> 1. Selecione os Colaboradores ({funcionariosSelecionados.length} selecionados)
@@ -250,6 +283,35 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
 
                 <Input label="Título do Acordo" value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Ex: Acordo de Compensação..." />
                 
+                {/* Seção de Cálculo de Horas */}
+                <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                    <Calculator size={16} color="#3b82f6" />
+                    Cálculo Automático de Horas (Extras ou Saída Antecipada)
+                  </label>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px', lineHeight: '1.4' }}>
+                    Jornada padrão: <strong>08:00 às 17:48</strong>. O sistema detectará automaticamente se o horário gera saldo positivo ou negativo.
+                  </p>
+                  
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <Input 
+                        type="time" 
+                        label="Horário de Saída Real" 
+                        value={horarioSaida} 
+                        onChange={e => setHorarioSaida(e.target.value)} 
+                      />
+                    </div>
+                    <Button 
+                      onClick={adicionarCalculoHorasExtras} 
+                      disabled={!horarioSaida}
+                      style={{ backgroundColor: '#3b82f6', height: '42px', fontSize: '13px' }}
+                    >
+                      Calcular e Adicionar ao Texto
+                    </Button>
+                  </div>
+                </div>
+
                 <div style={{ marginTop: '15px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>Corpo do Acordo (Editável)</label>
                   <textarea 
@@ -270,7 +332,7 @@ export default function ModalAcordos({ aberto, onClose, funcionarios, avisar }: 
           {abaAtiva === 'lista' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               {acordos.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '40px' }}>Nenhum acordo registado no sistema.</p>
+                <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '40px' }}>Nenhum acordo registrado no sistema.</p>
               ) : (
                 acordos.map(acordo => (
                   <div key={acordo.id} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
