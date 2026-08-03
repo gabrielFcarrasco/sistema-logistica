@@ -10,7 +10,7 @@ import styles from './Layout.module.css';
 import { 
   LayoutDashboard, Package, Users, ClipboardCheck, LogOut, 
   Building2, Menu, X, ShieldCheck, ShieldAlert, ShoppingCart, 
-  ArrowDownToLine, Paintbrush, FileSignature
+  ArrowDownToLine, Paintbrush, FileSignature, Clock 
 } from 'lucide-react';
 
 interface Setor { id: string; nome: string; }
@@ -101,6 +101,7 @@ export default function Layout() {
           <li><Link to="/estoque" className={getMenuClass('/estoque')}><Package size={18} color="#38bdf8" style={{ marginRight: '12px' }} /> Estoque e EPIs</Link></li>
           <li><Link to="/entrega" className={getMenuClass('/entrega')}><ClipboardCheck size={18} color="#10b981" style={{ marginRight: '12px' }} /> Entregar Material</Link></li>
           <li><Link to="/funcionarios" className={getMenuClass('/funcionarios')}><Users size={18} color="#8b5cf6" style={{ marginRight: '12px' }} /> Equipe e Qualificação</Link></li>
+          <li><Link to="/gestao-ponto" className={getMenuClass('/gestao-ponto')}><Clock size={18} color="#0ea5e9" style={{ marginRight: '12px' }} /> Gestão de Ponto</Link></li>
           <li><Link to="/prestacao-servicos" className={getMenuClass('/prestacao-servicos')}><Paintbrush size={18} color="#f59e0b" style={{ marginRight: '12px' }} /> Operação / Produção</Link></li>
           <li><Link to="/orcamentos" className={getMenuClass('/orcamentos')}><FileSignature size={18} color="#f472b6" style={{ marginRight: '12px' }} /> Orçamentos</Link></li>
           <li><Link to="/pedidos-compra" className={getMenuClass('/pedidos-compra')}><ShoppingCart size={18} color="#fbbf24" style={{ marginRight: '12px' }} /> Pedidos de Compra</Link></li>
