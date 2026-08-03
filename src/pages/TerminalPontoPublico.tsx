@@ -183,8 +183,8 @@ export default function TerminalPontoPublico() {
                 <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '15px', borderRadius: '12px', display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px' }}>
                   <AlertCircle size={24} color="#ef4444" />
                   <div>
-                    <h4 style={{ margin: '0 0 5px 0', color: '#991b1b', fontSize: '14px' }}>Catraca Bloqueada</h4>
-                    <p style={{ margin: 0, color: '#b91c1c', fontSize: '12px' }}>O seu ponto não está liberado. Solicite a liberação ao seu gestor.</p>
+                    <h4 style={{ margin: '0 0 5px 0', color: '#991b1b', fontSize: '14px' }}>Acesso Bloqueado</h4>
+                    <p style={{ margin: 0, color: '#b91c1c', fontSize: '12px' }}>O seu ponto não está liberado. Solicite a liberação para bater o ponto.</p>
                   </div>
                 </div>
               )}
