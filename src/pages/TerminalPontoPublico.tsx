@@ -4,7 +4,6 @@ import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp
 import { db } from '../services/firebase'; 
 import { dbFolha } from '../services/firebaseFolha'; 
 
-// Adicionámos novos ícones para enriquecer o visual
 import { Clock, Fingerprint, Search, AlertCircle, CheckCircle2, User, LogOut, Lock, Unlock, ChevronRight } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -20,6 +19,9 @@ export default function TerminalPontoPublico() {
 
   const [modalAssinatura, setModalAssinatura] = useState(false);
   const [proximoPonto, setProximoPonto] = useState<'entrada1' | 'saida1' | 'entrada2' | 'saida2' | null>(null);
+
+  // ✨ NOVO: Estado para controlar o Modal de Sucesso Bonito
+  const [sucesso, setSucesso] = useState({ visivel: false, mensagem: '', horaExata: '' });
 
   // 1. Relógio em Tempo Real
   useEffect(() => {
@@ -83,7 +85,7 @@ export default function TerminalPontoPublico() {
     else if (!registroHoje.saida2) qualPonto = 'saida2';
 
     if (!qualPonto) {
-      alert("Todos os pontos já foram registados hoje!");
+      setErro("Todos os pontos já foram registados hoje!");
       return;
     }
 
@@ -99,7 +101,10 @@ export default function TerminalPontoPublico() {
   // 5. Lógica de Gravação no Banco
   const gravarPontoNoBanco = async (campoPonto: string, assinaturaBase64: string) => {
     const dataHojeStr = new Date().toISOString().split('T')[0];
-    const horaExata = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    
+    // ✨ ATUALIZADO: Agora geramos a hora COM SEGUNDOS ('second: 2-digit')
+    const horaExataComSegundos = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    
     const idRegistro = `${funcionario.id}_${dataHojeStr}`;
     const docRef = doc(dbFolha, 'registros_ponto', idRegistro);
 
@@ -108,7 +113,7 @@ export default function TerminalPontoPublico() {
         funcionarioId: funcionario.id,
         nomeFuncionario: funcionario.nome,
         data: dataHojeStr,
-        [campoPonto]: horaExata,
+        [campoPonto]: horaExataComSegundos, // Salva com segundos no banco
         liberadoParaBater: false,
         ultimaAtualizacao: serverTimestamp()
       };
@@ -121,13 +126,19 @@ export default function TerminalPontoPublico() {
 
       setRegistroHoje({ ...registroHoje, ...dadosAtualizar });
       setModalAssinatura(false);
+      
+      // ✨ NOVO: Em vez de alert(), abrimos o nosso modal maravilhoso!
+      setSucesso({ 
+        visivel: true, 
+        mensagem: 'Ponto registado com sucesso!', 
+        horaExata: horaExataComSegundos 
+      });
 
     } catch (error) {
-      alert("Erro ao registar o ponto. Tente novamente.");
+      setErro("Erro ao registar o ponto. Tente novamente.");
     }
   };
 
-  // Formatação de Datas
   const dataFormatada = horaAtual.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
   const horaFormatada = horaAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const segundosFormatados = horaAtual.toLocaleTimeString('pt-BR', { second: '2-digit' }).split(':')[2];
@@ -142,7 +153,7 @@ export default function TerminalPontoPublico() {
         flexDirection: 'column', 
         alignItems: 'center', 
         justifyContent: 'center',
-        padding: '12px 5px', 
+        padding: '12px 2px', // Reduzi um pouco o padding lateral para os segundos caberem bem
         borderRadius: '12px', 
         backgroundColor: preenchido ? '#f0fdf4' : '#f8fafc',
         border: preenchido ? '1px solid #bbf7d0' : '1px dashed #cbd5e1',
@@ -152,11 +163,12 @@ export default function TerminalPontoPublico() {
           {titulo}
         </span>
         {preenchido ? (
-          <strong style={{ fontSize: '18px', color: '#15803d', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {hora} <CheckCircle2 size={14} color="#22c55e" />
+          // ✨ ATUALIZADO: Tamanho da fonte ajustado ligeiramente para garantir que os segundos cabem (15px)
+          <strong style={{ fontSize: '15px', color: '#15803d', display: 'flex', alignItems: 'center', gap: '2px', letterSpacing: '-0.5px' }}>
+            {hora} <CheckCircle2 size={12} color="#22c55e" />
           </strong>
         ) : (
-          <strong style={{ fontSize: '18px', color: '#cbd5e1' }}>--:--</strong>
+          <strong style={{ fontSize: '15px', color: '#cbd5e1' }}>--:--:--</strong>
         )}
       </div>
     );
@@ -165,12 +177,10 @@ export default function TerminalPontoPublico() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', backgroundImage: 'radial-gradient(#e2e8f0 1px, transparent 1px)', backgroundSize: '20px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       
-      {/* Container Principal Estilo Cartão Flutuante */}
       <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '450px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
         
         {/* Cabeçalho Escuro / Relógio Premium */}
         <div style={{ backgroundColor: '#0f172a', padding: '35px 20px', textAlign: 'center', color: 'white', position: 'relative', overflow: 'hidden' }}>
-          {/* Elementos decorativos de fundo */}
           <div style={{ position: 'absolute', top: '-50%', left: '-20%', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(59,130,246,0.2) 0%, rgba(0,0,0,0) 70%)', borderRadius: '50%' }}></div>
           <div style={{ position: 'absolute', bottom: '-50%', right: '-20%', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(16,185,129,0.2) 0%, rgba(0,0,0,0) 70%)', borderRadius: '50%' }}></div>
           
@@ -179,7 +189,7 @@ export default function TerminalPontoPublico() {
             
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '4px', margin: '15px 0' }}>
               <span style={{ fontSize: '64px', fontWeight: '800', letterSpacing: '-2px', lineHeight: '1' }}>{horaFormatada}</span>
-              <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>{segundosFormatados}</span>
+              <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>:{segundosFormatados}</span>
             </div>
             
             <p style={{ margin: 0, color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
@@ -188,12 +198,8 @@ export default function TerminalPontoPublico() {
           </div>
         </div>
 
-        {/* Área de Conteúdo Dinâmica */}
         <div style={{ padding: '30px' }}>
           {!funcionario ? (
-            // ==========================================
-            // ECRÃ 1: IDENTIFICAÇÃO (LOGIN)
-            // ==========================================
             <form onSubmit={buscarFuncionario} style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.5s' }}>
               <div style={{ textAlign: 'center', marginBottom: '10px' }}>
                 <div style={{ width: '60px', height: '60px', backgroundColor: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px auto' }}>
@@ -224,12 +230,7 @@ export default function TerminalPontoPublico() {
               </Button>
             </form>
           ) : (
-            // ==========================================
-            // ECRÃ 2: PAINEL DO COLABORADOR
-            // ==========================================
             <div style={{ animation: 'fadeIn 0.5s' }}>
-              
-              {/* Cabeçalho do Utilizador */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingBottom: '20px', borderBottom: '1px solid #f1f5f9' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ width: '45px', height: '45px', backgroundColor: '#f0fdf4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -241,7 +242,7 @@ export default function TerminalPontoPublico() {
                   </div>
                 </div>
                 <button 
-                  onClick={() => {setFuncionario(null); setMatricula('');}} 
+                  onClick={() => {setFuncionario(null); setMatricula(''); setErro('');}} 
                   style={{ background: '#f1f5f9', border: 'none', color: '#64748b', padding: '8px', borderRadius: '50%', cursor: 'pointer', transition: 'background 0.2s' }}
                   title="Sair"
                 >
@@ -249,7 +250,6 @@ export default function TerminalPontoPublico() {
                 </button>
               </div>
 
-              {/* Status da Catraca */}
               {!registroHoje?.liberadoParaBater && !registroHoje?.saida2 && (
                 <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '16px', borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '25px' }}>
                   <div style={{ backgroundColor: '#fee2e2', padding: '8px', borderRadius: '50%' }}>
@@ -262,7 +262,13 @@ export default function TerminalPontoPublico() {
                 </div>
               )}
 
-              {/* Linha do Tempo (Horários) */}
+              {/* Erro customizado dentro da área do colaborador, caso tente bater duas vezes rápido */}
+              {erro && (
+                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '12px', borderRadius: '8px', marginBottom: '15px', color: '#b45309', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <AlertCircle size={16} /> {erro}
+                </div>
+              )}
+
               <div style={{ marginBottom: '30px' }}>
                 <h4 style={{ fontSize: '13px', color: '#475569', margin: '0 0 15px 0', fontWeight: 'bold', textTransform: 'uppercase' }}>Registos de Hoje</h4>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -273,7 +279,6 @@ export default function TerminalPontoPublico() {
                 </div>
               </div>
 
-              {/* Botão de Ação Principal */}
               {!registroHoje?.saida2 ? (
                 <Button 
                   onClick={iniciarBatidaPonto} 
@@ -311,7 +316,6 @@ export default function TerminalPontoPublico() {
         </div>
       </div>
 
-      {/* Modal de Assinatura */}
       <ModalAssinaturaPonto 
         aberto={modalAssinatura} 
         onClose={() => setModalAssinatura(false)} 
@@ -319,12 +323,50 @@ export default function TerminalPontoPublico() {
           if (proximoPonto) gravarPontoNoBanco(proximoPonto, base64);
         }} 
       />
+
+      {/* ==========================================
+          MODAL DE SUCESSO (Substituto do Alert)
+      ========================================== */}
+      {sucesso.visivel && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)', padding: '20px' }}>
+           <div style={{ backgroundColor: 'white', borderRadius: '24px', padding: '40px 30px', textAlign: 'center', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+              
+              {/* Ícone Animado */}
+              <div style={{ backgroundColor: '#dcfce7', width: '80px', height: '80px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto', boxShadow: '0 0 0 10px #f0fdf4' }}>
+                 <CheckCircle2 size={40} color="#16a34a" />
+              </div>
+              
+              <h2 style={{ margin: '0 0 10px 0', color: '#1e293b', fontSize: '24px', fontWeight: '800' }}>Ponto Registado!</h2>
+              <p style={{ margin: '0 0 20px 0', color: '#64748b', fontSize: '15px' }}>{sucesso.mensagem}</p>
+              
+              {/* Hora com Segundos Bem Grande */}
+              <div style={{ fontSize: '40px', fontWeight: '900', color: '#10b981', fontFamily: 'monospace', letterSpacing: '-1px', marginBottom: '30px', backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '16px', border: '1px solid #bbf7d0' }}>
+                {sucesso.horaExata}
+              </div>
+              
+              <Button 
+                onClick={() => {
+                  setSucesso({ visivel: false, mensagem: '', horaExata: '' });
+                  // Volta para a tela inicial de matrícula para o próximo colega
+                  setFuncionario(null); 
+                  setMatricula('');
+                }} 
+                style={{ width: '100%', height: '55px', fontSize: '16px', backgroundColor: '#3b82f6', borderRadius: '12px', fontWeight: 'bold' }}
+              >
+                Fechar e Continuar
+              </Button>
+           </div>
+        </div>
+      )}
       
-      {/* Pequeno CSS global para as animações suaves inseridas na página */}
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(40px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
 
