@@ -4,7 +4,8 @@ import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp
 import { db } from '../services/firebase'; 
 import { dbFolha } from '../services/firebaseFolha'; 
 
-import { Clock, Fingerprint, Search, AlertCircle, CheckCircle2 } from 'lucide-react';
+// Adicionámos novos ícones para enriquecer o visual
+import { Clock, Fingerprint, Search, AlertCircle, CheckCircle2, User, LogOut, Lock, Unlock, ChevronRight } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import ModalAssinaturaPonto from '../components/ponto/ModalAssinaturaPonto';
@@ -17,7 +18,6 @@ export default function TerminalPontoPublico() {
   const [registroHoje, setRegistroHoje] = useState<any>(null);
   const [erro, setErro] = useState('');
 
-  // Estado para o Modal de Assinatura (exigido no último ponto do dia)
   const [modalAssinatura, setModalAssinatura] = useState(false);
   const [proximoPonto, setProximoPonto] = useState<'entrada1' | 'saida1' | 'entrada2' | 'saida2' | null>(null);
 
@@ -27,7 +27,7 @@ export default function TerminalPontoPublico() {
     return () => clearInterval(timer);
   }, []);
 
-  // 2. Buscar Funcionário pela Matrícula e verificar a "Catraca Virtual"
+  // 2. Lógica de Busca do Funcionário
   const buscarFuncionario = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro('');
@@ -45,7 +45,7 @@ export default function TerminalPontoPublico() {
 
       const funcData = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
       if ((funcData as any).status === 'desligado') {
-        setErro('Colaborador inativo.');
+        setErro('Colaborador inativo no sistema.');
         return;
       }
 
@@ -53,11 +53,11 @@ export default function TerminalPontoPublico() {
       await carregarPontoFuncionario(funcData.id);
 
     } catch (error) {
-      setErro('Erro ao ligar ao sistema.');
+      setErro('Erro ao ligar ao sistema. Tente novamente.');
     }
   };
 
-  // 3. Carregar o registo específico de HOJE para este funcionário
+  // 3. Lógica de Carregar Ponto de Hoje
   const carregarPontoFuncionario = async (funcionarioId: string) => {
     const dataHojeStr = new Date().toISOString().split('T')[0];
     const idRegistro = `${funcionarioId}_${dataHojeStr}`;
@@ -68,16 +68,14 @@ export default function TerminalPontoPublico() {
     if (docSnap.exists()) {
       setRegistroHoje(docSnap.data());
     } else {
-      // Se não existe documento, significa que o gestor ainda não interagiu com este funcionário hoje
       setRegistroHoje({ liberadoParaBater: false }); 
     }
   };
 
-  // 4. Lógica ao clicar no botão "Registar Horário"
+  // 4. Lógica de Identificação do Próximo Ponto
   const iniciarBatidaPonto = () => {
     if (!funcionario || !registroHoje?.liberadoParaBater) return;
 
-    // Descobre qual é a próxima batida vazia
     let qualPonto: 'entrada1' | 'saida1' | 'entrada2' | 'saida2' | null = null;
     if (!registroHoje.entrada1) qualPonto = 'entrada1';
     else if (!registroHoje.saida1) qualPonto = 'saida1';
@@ -91,16 +89,14 @@ export default function TerminalPontoPublico() {
 
     setProximoPonto(qualPonto);
 
-    // Se for o ÚLTIMO ponto do dia (saída 2), obriga a assinar
     if (qualPonto === 'saida2') {
       setModalAssinatura(true);
     } else {
-      // Se for os primeiros 3 pontos, grava direto sem assinatura
       gravarPontoNoBanco(qualPonto, '');
     }
   };
 
-  // 5. Gravar a hora no banco de dados isolado e TRANCAR A CATRACA
+  // 5. Lógica de Gravação no Banco
   const gravarPontoNoBanco = async (campoPonto: string, assinaturaBase64: string) => {
     const dataHojeStr = new Date().toISOString().split('T')[0];
     const horaExata = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -113,7 +109,7 @@ export default function TerminalPontoPublico() {
         nomeFuncionario: funcionario.nome,
         data: dataHojeStr,
         [campoPonto]: horaExata,
-        liberadoParaBater: false, // Tranca a catraca automaticamente após bater
+        liberadoParaBater: false,
         ultimaAtualizacao: serverTimestamp()
       };
 
@@ -123,9 +119,7 @@ export default function TerminalPontoPublico() {
 
       await setDoc(docRef, dadosAtualizar, { merge: true });
 
-      // Atualiza a tela imediatamente
       setRegistroHoje({ ...registroHoje, ...dadosAtualizar });
-      alert(`Ponto registado com sucesso às ${horaExata}!`);
       setModalAssinatura(false);
 
     } catch (error) {
@@ -133,94 +127,183 @@ export default function TerminalPontoPublico() {
     }
   };
 
+  // Formatação de Datas
   const dataFormatada = horaAtual.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  const horaFormatada = horaAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const segundosFormatados = horaAtual.toLocaleTimeString('pt-BR', { second: '2-digit' }).split(':')[2];
+
+  // Componente Auxiliar Visual: Cartão de Horário Individual
+  const CartaoHorario = ({ titulo, hora }: { titulo: string, hora?: string }) => {
+    const preenchido = hora && hora !== '--:--';
+    return (
+      <div style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        padding: '12px 5px', 
+        borderRadius: '12px', 
+        backgroundColor: preenchido ? '#f0fdf4' : '#f8fafc',
+        border: preenchido ? '1px solid #bbf7d0' : '1px dashed #cbd5e1',
+        transition: 'all 0.3s ease'
+      }}>
+        <span style={{ fontSize: '10px', color: preenchido ? '#166534' : '#64748b', fontWeight: 'bold', marginBottom: '4px', textAlign: 'center' }}>
+          {titulo}
+        </span>
+        {preenchido ? (
+          <strong style={{ fontSize: '18px', color: '#15803d', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {hora} <CheckCircle2 size={14} color="#22c55e" />
+          </strong>
+        ) : (
+          <strong style={{ fontSize: '18px', color: '#cbd5e1' }}>--:--</strong>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '500px', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', backgroundImage: 'radial-gradient(#e2e8f0 1px, transparent 1px)', backgroundSize: '20px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      
+      {/* Container Principal Estilo Cartão Flutuante */}
+      <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '450px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
         
-        {/* Cabeçalho / Relógio */}
-        <div style={{ backgroundColor: '#0f172a', padding: '40px 20px', textAlign: 'center', color: 'white' }}>
-          <h2 style={{ margin: 0, color: '#94a3b8', fontSize: '16px', textTransform: 'capitalize' }}>{dataFormatada}</h2>
-          <div style={{ fontSize: '64px', fontWeight: '900', letterSpacing: '2px', margin: '15px 0', fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}>
-            <Clock size={40} color="#10b981" /> {horaAtual.toLocaleTimeString('pt-BR')}
+        {/* Cabeçalho Escuro / Relógio Premium */}
+        <div style={{ backgroundColor: '#0f172a', padding: '35px 20px', textAlign: 'center', color: 'white', position: 'relative', overflow: 'hidden' }}>
+          {/* Elementos decorativos de fundo */}
+          <div style={{ position: 'absolute', top: '-50%', left: '-20%', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(59,130,246,0.2) 0%, rgba(0,0,0,0) 70%)', borderRadius: '50%' }}></div>
+          <div style={{ position: 'absolute', bottom: '-50%', right: '-20%', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(16,185,129,0.2) 0%, rgba(0,0,0,0) 70%)', borderRadius: '50%' }}></div>
+          
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <h2 style={{ margin: 0, color: '#94a3b8', fontSize: '14px', textTransform: 'capitalize', fontWeight: '500' }}>{dataFormatada}</h2>
+            
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '4px', margin: '15px 0' }}>
+              <span style={{ fontSize: '64px', fontWeight: '800', letterSpacing: '-2px', lineHeight: '1' }}>{horaFormatada}</span>
+              <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>{segundosFormatados}</span>
+            </div>
+            
+            <p style={{ margin: 0, color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+              <Clock size={14} /> Terminal Digital de Ponto
+            </p>
           </div>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Terminal Digital Carvalho</p>
         </div>
 
+        {/* Área de Conteúdo Dinâmica */}
         <div style={{ padding: '30px' }}>
           {!funcionario ? (
-            // Ecrã 1: Login por Matrícula
-            <form onSubmit={buscarFuncionario} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <h3 style={{ margin: 0, color: '#1e293b', textAlign: 'center', marginBottom: '10px' }}>Identifique-se</h3>
-              <Input 
-                label="Digite sua Matrícula" 
-                value={matricula} 
-                onChange={e => setMatricula(e.target.value)} 
-                type="number"
-                placeholder="Ex: 1001"
-              />
-              {erro && <p style={{ color: '#ef4444', fontSize: '13px', margin: 0, textAlign: 'center' }}>{erro}</p>}
-              <Button type="submit" style={{ height: '50px', backgroundColor: '#3b82f6', fontSize: '16px' }}>
-                <Search size={20} style={{ marginRight: '8px' }} /> Acessar Ponto
+            // ==========================================
+            // ECRÃ 1: IDENTIFICAÇÃO (LOGIN)
+            // ==========================================
+            <form onSubmit={buscarFuncionario} style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.5s' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <div style={{ width: '60px', height: '60px', backgroundColor: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px auto' }}>
+                  <Fingerprint size={32} color="#3b82f6" />
+                </div>
+                <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '20px', fontWeight: '800' }}>Olá, Colaborador!</h3>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Digite sua matrícula para registrar o ponto.</p>
+              </div>
+
+              <div>
+                <Input 
+                  label="" 
+                  value={matricula} 
+                  onChange={e => setMatricula(e.target.value)} 
+                  type="number"
+                  placeholder="Sua Matrícula (Ex: 1001)"
+                  style={{ textAlign: 'center', fontSize: '18px', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', backgroundColor: '#f8fafc' }}
+                />
+                {erro && (
+                  <p style={{ color: '#ef4444', fontSize: '13px', margin: '8px 0 0 0', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                    <AlertCircle size={14} /> {erro}
+                  </p>
+                )}
+              </div>
+
+              <Button type="submit" style={{ height: '55px', backgroundColor: '#3b82f6', fontSize: '16px', borderRadius: '12px', fontWeight: 'bold' }}>
+                Continuar <ChevronRight size={20} />
               </Button>
             </form>
           ) : (
-            // Ecrã 2: Área do Colaborador
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid #e2e8f0' }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Colaborador(a)</p>
-                  <h3 style={{ margin: '5px 0 0 0', color: '#1e293b' }}>{funcionario.nome}</h3>
+            // ==========================================
+            // ECRÃ 2: PAINEL DO COLABORADOR
+            // ==========================================
+            <div style={{ animation: 'fadeIn 0.5s' }}>
+              
+              {/* Cabeçalho do Utilizador */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', paddingBottom: '20px', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '45px', height: '45px', backgroundColor: '#f0fdf4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <User size={24} color="#16a34a" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, color: '#1e293b', fontSize: '16px', fontWeight: 'bold' }}>{funcionario.nome}</h3>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Matrícula: {funcionario.matricula}</p>
+                  </div>
                 </div>
-                <button onClick={() => {setFuncionario(null); setMatricula('');}} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}>
-                  Sair
+                <button 
+                  onClick={() => {setFuncionario(null); setMatricula('');}} 
+                  style={{ background: '#f1f5f9', border: 'none', color: '#64748b', padding: '8px', borderRadius: '50%', cursor: 'pointer', transition: 'background 0.2s' }}
+                  title="Sair"
+                >
+                  <LogOut size={18} />
                 </button>
               </div>
 
-              {/* Status da Catraca Virtual */}
+              {/* Status da Catraca */}
               {!registroHoje?.liberadoParaBater && !registroHoje?.saida2 && (
-                <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '15px', borderRadius: '12px', display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px' }}>
-                  <AlertCircle size={24} color="#ef4444" />
+                <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '16px', borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '25px' }}>
+                  <div style={{ backgroundColor: '#fee2e2', padding: '8px', borderRadius: '50%' }}>
+                    <Lock size={20} color="#dc2626" />
+                  </div>
                   <div>
-                    <h4 style={{ margin: '0 0 5px 0', color: '#991b1b', fontSize: '14px' }}>Acesso Bloqueado</h4>
-                    <p style={{ margin: 0, color: '#b91c1c', fontSize: '12px' }}>O seu ponto não está liberado. Solicite a liberação para bater o ponto.</p>
+                    <h4 style={{ margin: '0 0 4px 0', color: '#991b1b', fontSize: '14px', fontWeight: 'bold' }}>Aguardando Liberação</h4>
+                    <p style={{ margin: 0, color: '#b91c1c', fontSize: '12px' }}>Peça ao gestor para liberar seu próximo ponto.</p>
                   </div>
                 </div>
               )}
 
-              {/* Grelha de Horários */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '25px' }}>
-                <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>ENTRADA</span>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: registroHoje?.entrada1 ? '#10b981' : '#cbd5e1' }}>{registroHoje?.entrada1 || '--:--'}</div>
-                </div>
-                <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>SAÍDA ALMOÇO</span>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: registroHoje?.saida1 ? '#10b981' : '#cbd5e1' }}>{registroHoje?.saida1 || '--:--'}</div>
-                </div>
-                <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>RETORNO</span>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: registroHoje?.entrada2 ? '#10b981' : '#cbd5e1' }}>{registroHoje?.entrada2 || '--:--'}</div>
-                </div>
-                <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>SAÍDA FIM</span>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: registroHoje?.saida2 ? '#10b981' : '#cbd5e1' }}>{registroHoje?.saida2 || '--:--'}</div>
+              {/* Linha do Tempo (Horários) */}
+              <div style={{ marginBottom: '30px' }}>
+                <h4 style={{ fontSize: '13px', color: '#475569', margin: '0 0 15px 0', fontWeight: 'bold', textTransform: 'uppercase' }}>Registos de Hoje</h4>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <CartaoHorario titulo="ENTRADA" hora={registroHoje?.entrada1} />
+                  <CartaoHorario titulo="SAÍDA" hora={registroHoje?.saida1} />
+                  <CartaoHorario titulo="RETORNO" hora={registroHoje?.entrada2} />
+                  <CartaoHorario titulo="FIM" hora={registroHoje?.saida2} />
                 </div>
               </div>
 
-              {/* Botões de Ação */}
+              {/* Botão de Ação Principal */}
               {!registroHoje?.saida2 ? (
                 <Button 
                   onClick={iniciarBatidaPonto} 
                   disabled={!registroHoje?.liberadoParaBater}
-                  style={{ width: '100%', height: '60px', fontSize: '18px', fontWeight: 'bold', backgroundColor: registroHoje?.liberadoParaBater ? '#10b981' : '#cbd5e1', display: 'flex', justifyContent: 'center', gap: '10px' }}
+                  style={{ 
+                    width: '100%', 
+                    height: '65px', 
+                    fontSize: '18px', 
+                    fontWeight: '800', 
+                    borderRadius: '16px',
+                    backgroundColor: registroHoje?.liberadoParaBater ? '#10b981' : '#f1f5f9', 
+                    color: registroHoje?.liberadoParaBater ? 'white' : '#94a3b8',
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    gap: '12px',
+                    boxShadow: registroHoje?.liberadoParaBater ? '0 10px 15px -3px rgba(16, 185, 129, 0.3)' : 'none',
+                    transition: 'all 0.3s'
+                  }}
                 >
-                  <Fingerprint size={24} /> Registar Horário
+                  {registroHoje?.liberadoParaBater ? (
+                    <><Unlock size={24} /> Bater Ponto Agora</>
+                  ) : (
+                    <><Lock size={24} /> Ponto Bloqueado</>
+                  )}
                 </Button>
               ) : (
-                <div style={{ padding: '15px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', color: '#166534', fontWeight: 'bold' }}>
-                  <CheckCircle2 size={24} /> Expediente Concluído
+                <div style={{ padding: '20px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', color: '#15803d' }}>
+                  <CheckCircle2 size={32} />
+                  <strong style={{ fontSize: '16px' }}>Expediente Concluído</strong>
+                  <span style={{ fontSize: '13px' }}>Bom descanso!</span>
                 </div>
               )}
             </div>
@@ -228,14 +311,22 @@ export default function TerminalPontoPublico() {
         </div>
       </div>
 
+      {/* Modal de Assinatura */}
       <ModalAssinaturaPonto 
         aberto={modalAssinatura} 
         onClose={() => setModalAssinatura(false)} 
         onConfirm={(base64) => {
-          // Se o utilizador pulou, o "base64" será uma string vazia (''), mas a função gravará a hora na mesma!
           if (proximoPonto) gravarPontoNoBanco(proximoPonto, base64);
         }} 
       />
+      
+      {/* Pequeno CSS global para as animações suaves inseridas na página */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
 
     </div>
   );
