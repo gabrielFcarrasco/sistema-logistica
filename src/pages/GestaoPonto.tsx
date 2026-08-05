@@ -4,7 +4,7 @@ import { collection, onSnapshot, doc, setDoc, query, where, serverTimestamp } fr
 import { db } from '../services/firebase'; 
 import { dbFolha } from '../services/firebaseFolha'; 
 
-import { Clock, LockOpen, Lock, Edit3, Save, X, UserCheck, AlertCircle, Copy, CheckCircle2, FileText, UserMinus, Handshake, AlertTriangle } from 'lucide-react';
+import { Clock, LockOpen, Lock, Edit3, Save, X, UserCheck, AlertCircle, Copy, CheckCircle2, FileText, UserMinus, Handshake, AlertTriangle, Search } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
@@ -14,7 +14,7 @@ const JORNADA_PADRAO = {
   saidaAlmoco: '12:00',
   retornoAlmoco: '13:00',
   saidaFim: '17:48',
-  limiteAtraso: '08:30', // A partir deste horário, se não bateu, pede Falta/Atestado
+  limiteAtraso: '08:30', 
   cargaHoraria: '08:48'
 };
 
@@ -23,8 +23,8 @@ export default function GestaoPonto() {
   const [registrosHoje, setRegistrosHoje] = useState<any[]>([]);
   const [acordosHoje, setAcordosHoje] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [termoBusca, setTermoBusca] = useState('');
 
-  // Relógio em tempo real para calcular atrasos
   const [horaAtualTexto, setHoraAtualTexto] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
 
   const [modalAberto, setModalAberto] = useState(false);
@@ -42,22 +42,19 @@ export default function GestaoPonto() {
   const dataHojeStr = new Date().toISOString().split('T')[0];
   const dataFormatada = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
-  // Responsividade
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Relógio
   useEffect(() => {
     const timer = setInterval(() => {
       setHoraAtualTexto(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
-    }, 60000); // Atualiza a cada minuto
+    }, 60000);
     return () => clearInterval(timer);
   }, []);
 
-  // 1. Carregar Funcionários
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'funcionarios'), (snap) => {
       const ativos = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((f: any) => f.status !== 'desligado');
@@ -66,7 +63,6 @@ export default function GestaoPonto() {
     return () => unsub();
   }, []);
 
-  // 2. Carregar Registos de Ponto
   useEffect(() => {
     const q = query(collection(dbFolha, 'registros_ponto'), where('data', '==', dataHojeStr));
     const unsub = onSnapshot(q, (snap) => {
@@ -77,20 +73,15 @@ export default function GestaoPonto() {
     return () => unsub();
   }, [dataHojeStr]);
 
-  // 3. 🧠 INTELIGÊNCIA: Carregar Acordos da coleção real do sistema
   useEffect(() => {
-    // Busca na coleção acordos_colaboradores para integrar os sistemas
     const q = query(collection(db, 'acordos_colaboradores'));
     const unsub = onSnapshot(q, (snap) => {
       const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      
-      // Filtra apenas os acordos criados no dia de hoje (baseado no createdAt)
       const acordosDeHoje = lista.filter((acordo: any) => {
         if (!acordo.createdAt) return false;
         const dataAcordo = acordo.createdAt.toDate().toISOString().split('T')[0];
         return dataAcordo === dataHojeStr;
       });
-      
       setAcordosHoje(acordosDeHoje);
     });
     return () => unsub();
@@ -172,185 +163,248 @@ export default function GestaoPonto() {
     }
   };
 
-  if (carregando) return <div style={{ padding: '40px', textAlign: 'center' }}>Sincronizando sistemas...</div>;
+  // Filtragem visual dos colaboradores
+  const funcionariosFiltrados = funcionarios.filter(f => 
+    f.nome.toLowerCase().includes(termoBusca.toLowerCase()) || 
+    f.matricula.includes(termoBusca)
+  );
+
+  if (carregando) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Sincronizando sistemas de RH...</div>;
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '10px' : '20px' }}>
+    // Fundo da página ajustado para um tom super limpo
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: isMobile ? '15px 10px' : '30px 20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       
-      {/* Cabeçalho */}
-      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: '20px', marginBottom: '30px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ backgroundColor: '#e0f2fe', padding: '12px', borderRadius: '12px' }}>
-            <Clock size={28} color="#0ea5e9" />
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        
+        {/* ==========================================
+            CABEÇALHO PREMIUM
+        ========================================== */}
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: '20px', marginBottom: '35px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={{ backgroundColor: '#eff6ff', padding: '14px', borderRadius: '16px', border: '1px solid #bfdbfe', boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.1)' }}>
+              <Clock size={30} color="#2563eb" />
+            </div>
+            <div>
+              <h1 style={{ fontSize: isMobile ? '22px' : '28px', color: '#0f172a', margin: '0 0 4px 0', fontWeight: '800', letterSpacing: '-0.5px' }}>
+                Monitor de Ponto
+              </h1>
+              <p style={{ margin: 0, fontSize: '14px', color: '#64748b', fontWeight: '500' }}>
+                {dataFormatada} • Jornada: <strong style={{ color: '#475569' }}>{JORNADA_PADRAO.entrada} - {JORNADA_PADRAO.saidaFim}</strong>
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 style={{ fontSize: isMobile ? '20px' : '24px', color: '#1e293b', margin: 0, fontWeight: '800' }}>Painel Inteligente de Ponto</h1>
-            <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>{dataFormatada} • Jornada: {JORNADA_PADRAO.entrada} às {JORNADA_PADRAO.saidaFim}</p>
+
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '15px' }}>
+            {/* Barra de Pesquisa Integrada */}
+            <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '0 15px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <Search size={18} color="#94a3b8" />
+              <input 
+                type="text" 
+                placeholder="Buscar colaborador..." 
+                value={termoBusca}
+                onChange={e => setTermoBusca(e.target.value)}
+                style={{ border: 'none', padding: '12px 10px', outline: 'none', fontSize: '14px', width: isMobile ? '100%' : '200px', backgroundColor: 'transparent' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', backgroundColor: 'white', padding: '8px 8px 8px 15px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <span style={{ fontSize: '13px', color: '#475569', fontWeight: '600' }}>Terminal Web:</span>
+              <button onClick={copiarLinkPonto} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: linkCopiado ? '#10b981' : '#f1f5f9', border: 'none', color: linkCopiado ? 'white' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', padding: '10px 16px', borderRadius: '8px', transition: 'all 0.2s' }}>
+                {linkCopiado ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+                {linkCopiado ? 'Copiado!' : 'Copiar Link'}
+              </button>
+            </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', backgroundColor: 'white', padding: '10px 15px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-          <span style={{ fontSize: '13px', color: '#475569', fontWeight: 'bold' }}>Terminal Público:</span>
-          <button onClick={copiarLinkPonto} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: linkCopiado ? '#10b981' : '#f1f5f9', border: 'none', color: linkCopiado ? 'white' : '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', padding: '8px 12px', borderRadius: '6px', transition: 'all 0.2s' }}>
-            {linkCopiado ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-            {linkCopiado ? 'Copiado!' : 'Copiar Link'}
-          </button>
-        </div>
-      </div>
+        {/* ==========================================
+            LISTAGEM DE COLABORADORES (CARTÕES MODERNOS)
+        ========================================== */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {funcionariosFiltrados.map(func => {
+            const regHoje = registrosHoje.find(r => r.funcionarioId === func.id);
+            const acordoHoje = acordosHoje.find(a => a.funcionarioId === func.id);
+            
+            const estaLiberado = regHoje?.liberadoParaBater || false;
+            const concluido = regHoje?.saida2 && regHoje.saida2 !== '--:--';
+            const temFaltaOuAtestado = regHoje?.statusDia === 'Falta' || regHoje?.statusDia === 'Atestado Médico';
+            
+            const semPontoAinda = !regHoje?.entrada1 && !temFaltaOuAtestado;
+            const estaAtrasado = semPontoAinda && (horaAtualTexto > JORNADA_PADRAO.limiteAtraso);
 
-      {/* Lista de Funcionários */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        {funcionarios.map(func => {
-          const regHoje = registrosHoje.find(r => r.funcionarioId === func.id);
-          
-          // 🧠 INTELIGÊNCIA: Verifica se existe acordo assinado na coleção de acordos
-          const acordoHoje = acordosHoje.find(a => a.funcionarioId === func.id);
-          const tituloAcordo = acordoHoje ? acordoHoje.titulo : null;
-          
-          const estaLiberado = regHoje?.liberadoParaBater || false;
-          const concluido = regHoje?.saida2 && regHoje.saida2 !== '--:--';
-          const temFaltaOuAtestado = regHoje?.statusDia === 'Falta' || regHoje?.statusDia === 'Atestado Médico';
-          
-          // 🧠 INTELIGÊNCIA: Lógica de Alerta de Atraso
-          const semPontoAinda = !regHoje?.entrada1 && !temFaltaOuAtestado;
-          const estaAtrasado = semPontoAinda && (horaAtualTexto > JORNADA_PADRAO.limiteAtraso);
+            // Cores mais suaves e modernas para os cartões
+            let corFundo = 'white';
+            let corBorda = 'rgba(226, 232, 240, 0.8)'; // #e2e8f0 com transparência
+            
+            if (temFaltaOuAtestado) { corFundo = '#fff5f5'; corBorda = '#fecaca'; }
+            else if (estaAtrasado) { corFundo = '#fffbeb'; corBorda = '#fde68a'; }
+            else if (estaLiberado) { corFundo = '#f0fdf4'; corBorda = '#bbf7d0'; }
 
-          // Cores dinâmicas do cartão baseadas no status
-          let corFundo = 'white';
-          let corBorda = '#e2e8f0';
-          if (temFaltaOuAtestado) { corFundo = '#fef2f2'; corBorda = '#fca5a5'; }
-          else if (estaAtrasado) { corFundo = '#fffbeb'; corBorda = '#fcd34d'; }
-          else if (estaLiberado) { corFundo = '#f0fdf4'; corBorda = '#bbf7d0'; }
-
-          return (
-            <div key={func.id} style={{ 
-              backgroundColor: corFundo, borderRadius: '16px', border: `1px solid ${corBorda}`, 
-              padding: '20px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', 
-              gap: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', transition: 'all 0.3s' 
-            }}>
-              
-              {/* Bloco 1: Identificação */}
-              <div style={{ flex: 1 }}>
-                <strong style={{ display: 'block', fontSize: '16px', color: '#1e293b' }}>{func.nome}</strong>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>Matrícula: {func.matricula}</span>
+            return (
+              <div key={func.id} style={{ 
+                backgroundColor: corFundo, 
+                borderRadius: '20px', 
+                border: `1px solid ${corBorda}`, 
+                padding: isMobile ? '20px' : '24px', 
+                display: 'flex', 
+                flexDirection: isMobile ? 'column' : 'row', 
+                gap: '24px', 
+                boxShadow: '0 4px 15px -3px rgba(0,0,0,0.03), 0 2px 6px -2px rgba(0,0,0,0.02)', // Sombra super elegante
+                transition: 'all 0.3s ease' 
+              }}>
                 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-                  {/* Selo Automático de Acordo */}
-                  {acordoHoje && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', backgroundColor: '#e0e7ff', color: '#4338ca', padding: '4px 8px', borderRadius: '6px', fontWeight: 'bold', border: '1px solid #c7d2fe' }}>
-                      <Handshake size={12} /> {tituloAcordo}
-                    </span>
-                  )}
-                  {/* Selo de Justificativa */}
-                  {regHoje?.justificativa && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', backgroundColor: temFaltaOuAtestado ? '#fee2e2' : '#fef3c7', color: temFaltaOuAtestado ? '#b91c1c' : '#d97706', padding: '4px 8px', borderRadius: '6px', fontWeight: 'bold' }}>
-                      <AlertCircle size={12} /> {regHoje.justificativa}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Bloco 2: Grelha de Horários */}
-              <div style={{ flex: 2, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', backgroundColor: 'rgba(255,255,255,0.6)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)' }}>
-                <div style={{ textAlign: 'center' }}><span style={{ fontSize: '10px', color: '#94a3b8', display: 'block', fontWeight: 'bold' }}>ENTRADA</span><strong style={{ color: regHoje?.entrada1 ? '#10b981' : '#94a3b8', fontSize: '15px' }}>{regHoje?.entrada1 || '--:--'}</strong></div>
-                <div style={{ textAlign: 'center' }}><span style={{ fontSize: '10px', color: '#94a3b8', display: 'block', fontWeight: 'bold' }}>SAÍDA ALM.</span><strong style={{ color: regHoje?.saida1 ? '#10b981' : '#94a3b8', fontSize: '15px' }}>{regHoje?.saida1 || '--:--'}</strong></div>
-                <div style={{ textAlign: 'center' }}><span style={{ fontSize: '10px', color: '#94a3b8', display: 'block', fontWeight: 'bold' }}>RETORNO</span><strong style={{ color: regHoje?.entrada2 ? '#10b981' : '#94a3b8', fontSize: '15px' }}>{regHoje?.entrada2 || '--:--'}</strong></div>
-                <div style={{ textAlign: 'center' }}><span style={{ fontSize: '10px', color: '#94a3b8', display: 'block', fontWeight: 'bold' }}>SAÍDA FIM</span><strong style={{ color: regHoje?.saida2 ? '#10b981' : '#94a3b8', fontSize: '15px' }}>{regHoje?.saida2 || '--:--'}</strong></div>
-              </div>
-
-              {/* Bloco 3: Ações e Decisões */}
-              <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'center' }}>
-                
-                {/* 🧠 INTELIGÊNCIA: Painel de Decisão se estiver atrasado */}
-                {estaAtrasado ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#b45309', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <AlertTriangle size={14} /> Passou das {JORNADA_PADRAO.limiteAtraso}. O que fazer?
-                    </span>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      <Button onClick={() => lancarAusencia(func.id, func.nome, 'Falta')} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', fontSize: '12px', height: '35px', padding: 0 }}>
-                        <UserMinus size={14} style={{ marginRight: '4px' }}/> Falta
-                      </Button>
-                      <Button onClick={() => lancarAusencia(func.id, func.nome, 'Atestado Médico')} style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '12px', height: '35px', padding: 0 }}>
-                        <FileText size={14} style={{ marginRight: '4px' }}/> Atestado
-                      </Button>
+                {/* 1. Área de Identificação */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                    <div style={{ width: '40px', height: '40px', backgroundColor: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontWeight: 'bold', fontSize: '16px' }}>
+                      {func.nome.charAt(0)}
                     </div>
-                    <Button onClick={() => alternarCatraca(func.id, func.nome, estaLiberado)} style={{ width: '100%', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', fontSize: '12px', height: '30px' }}>
-                      Apenas Liberar Ponto
-                    </Button>
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '17px', color: '#0f172a', fontWeight: '700' }}>{func.nome}</strong>
+                      <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Matrícula: {func.matricula}</span>
+                    </div>
                   </div>
-                ) : semPontoAinda ? (
-                  // Ainda não bateu ponto, mas não está atrasado
-                  <Button onClick={() => alternarCatraca(func.id, func.nome, estaLiberado)} style={{ backgroundColor: estaLiberado ? '#ef4444' : '#10b981', fontSize: '13px', height: '45px', width: '100%' }}>
-                    {estaLiberado ? <><Lock size={16} style={{ marginRight: '5px' }}/> Bloquear Catraca</> : <><LockOpen size={16} style={{ marginRight: '5px' }}/> Liberar Entrada</>}
-                  </Button>
-                ) : (
-                  // Já tem ponto batido ou está com falta
-                  <div style={{ display: 'flex', gap: '10px', height: '100%', alignItems: 'center' }}>
-                    <div style={{ flex: 3 }}>
-                      {concluido || temFaltaOuAtestado ? (
-                        <div style={{ fontSize: '13px', fontWeight: 'bold', color: temFaltaOuAtestado ? '#991b1b' : '#166534', backgroundColor: temFaltaOuAtestado ? '#fee2e2' : '#dcfce7', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px' }}>
-                          {temFaltaOuAtestado ? 'Dia Justificado' : <><UserCheck size={16} /> Dia Concluído</>}
-                        </div>
-                      ) : estaLiberado ? (
-                        <Button onClick={() => alternarCatraca(func.id, func.nome, estaLiberado)} style={{ backgroundColor: '#ef4444', fontSize: '13px', height: '45px', width: '100%' }}>
-                          <Lock size={16} style={{ marginRight: '5px' }}/> Bloquear
-                        </Button>
+                  
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', paddingLeft: '52px' }}>
+                    {acordoHoje && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', backgroundColor: '#eef2ff', color: '#4f46e5', padding: '4px 10px', borderRadius: '20px', fontWeight: 'bold', border: '1px solid #c7d2fe' }}>
+                        <Handshake size={12} /> {acordoHoje.titulo}
+                      </span>
+                    )}
+                    {regHoje?.justificativa && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', backgroundColor: temFaltaOuAtestado ? '#fee2e2' : '#fef3c7', color: temFaltaOuAtestado ? '#b91c1c' : '#d97706', padding: '4px 10px', borderRadius: '20px', fontWeight: 'bold' }}>
+                        <AlertCircle size={12} /> {regHoje.justificativa}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Área de Horários (Estilo Dashboard) */}
+                <div style={{ flex: 1.5, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', backgroundColor: 'rgba(248, 250, 252, 0.5)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(226, 232, 240, 0.5)' }}>
+                  {[
+                    { label: 'ENTRADA', valor: regHoje?.entrada1 },
+                    { label: 'SAÍDA ALM.', valor: regHoje?.saida1 },
+                    { label: 'RETORNO', valor: regHoje?.entrada2 },
+                    { label: 'SAÍDA FIM', valor: regHoje?.saida2 }
+                  ].map((ponto, idx) => (
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '700', marginBottom: '4px' }}>{ponto.label}</span>
+                      {ponto.valor && ponto.valor !== '--:--' ? (
+                        <strong style={{ color: '#0f172a', fontSize: '16px', fontWeight: '800' }}>{ponto.valor}</strong>
                       ) : (
-                        <Button onClick={() => alternarCatraca(func.id, func.nome, estaLiberado)} style={{ backgroundColor: '#10b981', fontSize: '13px', height: '45px', width: '100%' }}>
-                          <LockOpen size={16} style={{ marginRight: '5px' }}/> Liberar Próximo
+                        <strong style={{ color: '#cbd5e1', fontSize: '16px', fontWeight: '600' }}>--:--</strong>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* 3. Área de Ações e Decisões */}
+                <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: '10px', justifyContent: 'center' }}>
+                  
+                  {/* ✨ O SEGREDO ESTÁ AQUI: Um layout consistente que SEMPRE inclui o botão de edição */}
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch', height: estaAtrasado ? 'auto' : '50px' }}>
+                    
+                    {/* Lado Esquerdo: Ações Principais da Catraca ou Falta */}
+                    <div style={{ flex: 3, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {estaAtrasado ? (
+                        <>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', height: '40px' }}>
+                            <Button onClick={() => lancarAusencia(func.id, func.nome, 'Falta')} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', fontSize: '12px', padding: 0, borderRadius: '10px' }}>
+                              <UserMinus size={14} style={{ marginRight: '6px' }}/> Falta
+                            </Button>
+                            <Button onClick={() => lancarAusencia(func.id, func.nome, 'Atestado Médico')} style={{ backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '12px', padding: 0, borderRadius: '10px' }}>
+                              <FileText size={14} style={{ marginRight: '6px' }}/> Atestado
+                            </Button>
+                          </div>
+                          <Button onClick={() => alternarCatraca(func.id, func.nome, estaLiberado)} style={{ backgroundColor: 'white', color: '#475569', border: '1px solid #cbd5e1', fontSize: '12px', height: '36px', borderRadius: '10px' }}>
+                            Apenas Liberar Ponto
+                          </Button>
+                        </>
+                      ) : semPontoAinda ? (
+                        <Button onClick={() => alternarCatraca(func.id, func.nome, estaLiberado)} style={{ backgroundColor: estaLiberado ? '#ef4444' : '#10b981', fontSize: '14px', height: '100%', width: '100%', borderRadius: '12px' }}>
+                          {estaLiberado ? <><Lock size={16} style={{ marginRight: '8px' }}/> Bloquear Catraca</> : <><LockOpen size={16} style={{ marginRight: '8px' }}/> Liberar Entrada</>}
+                        </Button>
+                      ) : concluido || temFaltaOuAtestado ? (
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: temFaltaOuAtestado ? '#991b1b' : '#15803d', backgroundColor: temFaltaOuAtestado ? '#fee2e2' : '#dcfce7', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', height: '100%' }}>
+                          {temFaltaOuAtestado ? 'Dia Justificado' : <><UserCheck size={18} /> Dia Concluído</>}
+                        </div>
+                      ) : (
+                        <Button onClick={() => alternarCatraca(func.id, func.nome, estaLiberado)} style={{ backgroundColor: estaLiberado ? '#ef4444' : '#10b981', fontSize: '14px', height: '100%', width: '100%', borderRadius: '12px' }}>
+                          {estaLiberado ? <><Lock size={16} style={{ marginRight: '8px' }}/> Bloquear</> : <><LockOpen size={16} style={{ marginRight: '8px' }}/> Liberar Próximo</>}
                         </Button>
                       )}
                     </div>
-                    <Button onClick={() => abrirModalEdicao(func, regHoje)} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#3b82f6', border: '1px solid #cbd5e1', padding: 0, height: '45px' }}>
-                      <Edit3 size={18} />
-                    </Button>
-                  </div>
-                )}
-              </div>
 
-            </div>
-          );
-        })}
+                    {/* ✨ Lado Direito: O Botão de Edição Lindo, Fixo e Sempre Disponível */}
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                       <Button 
+                        onClick={() => abrirModalEdicao(func, regHoje)} 
+                        style={{ 
+                          height: '100%', 
+                          minHeight: estaAtrasado ? '84px' : '100%', // Ajusta a altura se o bloco do lado esquerdo crescer
+                          backgroundColor: '#f8fafc', 
+                          color: '#3b82f6', 
+                          border: '1px solid #cbd5e1', 
+                          padding: 0, 
+                          borderRadius: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'background 0.2s'
+                        }}
+                        title="Ajustar Manualmente"
+                      >
+                        <Edit3 size={20} />
+                      </Button>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Modal de Edição */}
       {modalAberto && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)', padding: '15px' }}>
-          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '500px', borderRadius: '20px', padding: isMobile ? '20px' : '25px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)', padding: '15px' }}>
+          <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '500px', borderRadius: '24px', padding: isMobile ? '24px' : '32px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px', marginBottom: '25px' }}>
               <div>
-                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '18px' }}>Ajuste Manual</h3>
-                <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>{funcEditando?.nome}</p>
+                <h3 style={{ margin: 0, color: '#0f172a', fontSize: '20px', fontWeight: '800' }}>Ajuste Manual</h3>
+                <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>{funcEditando?.nome}</p>
               </div>
-              <button onClick={() => setModalAberto(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} color="#64748b" /></button>
+              <button onClick={() => setModalAberto(false)} style={{ background: '#f8fafc', border: 'none', cursor: 'pointer', padding: '10px', borderRadius: '50%' }}><X size={20} color="#64748b" /></button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '25px' }}>
               <Input type="time" label="Entrada" value={entrada1} onChange={e => setEntrada1(e.target.value)} />
               <Input type="time" label="Saída Almoço" value={saida1} onChange={e => setSaida1(e.target.value)} />
               <Input type="time" label="Retorno Almoço" value={entrada2} onChange={e => setEntrada2(e.target.value)} />
               <Input type="time" label="Saída Final" value={saida2} onChange={e => setSaida2(e.target.value)} />
             </div>
 
-            <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>Carga Horária Prevista</label>
+            <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '25px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '8px' }}>Carga Horária Prevista</label>
               <Input type="time" label="" value={cargaHoraria} onChange={e => setCargaHoraria(e.target.value)} />
-              <p style={{ fontSize: '11px', color: '#94a3b8', margin: '5px 0 0 0' }}>Jornada padrão: {JORNADA_PADRAO.cargaHoraria}</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '6px 0 0 0' }}>Jornada padrão: {JORNADA_PADRAO.cargaHoraria}</p>
             </div>
 
-            <div style={{ marginBottom: '25px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>Justificativa (Opcional)</label>
+            <div style={{ marginBottom: '30px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '8px' }}>Justificativa (Opcional)</label>
               <textarea 
                 value={justificativa} 
                 onChange={e => setJustificativa(e.target.value)} 
-                placeholder="Ex: Esqueceu de bater..."
-                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', minHeight: '80px', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                placeholder="Ex: Esqueceu de bater o ponto na entrada..."
+                style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #cbd5e1', outline: 'none', minHeight: '90px', fontFamily: 'inherit', boxSizing: 'border-box', fontSize: '14px' }}
               />
             </div>
 
-            <Button onClick={salvarEdicaoPonto} style={{ width: '100%', height: '50px', fontSize: '16px', backgroundColor: '#3b82f6', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+            <Button onClick={salvarEdicaoPonto} style={{ width: '100%', height: '56px', fontSize: '16px', backgroundColor: '#3b82f6', display: 'flex', justifyContent: 'center', gap: '10px', borderRadius: '14px', fontWeight: 'bold' }}>
               <Save size={20} /> Salvar Alterações
             </Button>
           </div>
