@@ -1,12 +1,12 @@
 // src/pages/Entrega.tsx
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { collection, onSnapshot, query, where, addDoc, doc, updateDoc, getDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, doc, updateDoc, getDoc, serverTimestamp, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { ClipboardSignature, CheckCircle2, AlertCircle, PenTool, Plus, ShoppingCart, Trash2, Shirt, UserCheck, HardHat, Building2, Smartphone } from 'lucide-react';
+import { ClipboardSignature, CheckCircle2, AlertCircle, PenTool, Plus, ShoppingCart, Trash2, Shirt, UserCheck, HardHat, Building2, Smartphone, Calendar, AlertTriangle, Copy } from 'lucide-react';
 
 import ModalJustificativa from '../components/entrega/ModalJustificativa';
 import ModalAssinaturaEntrega from '../components/entrega/ModalAssinaturaEntrega';
@@ -25,7 +25,9 @@ export default function Entrega() {
   const [recebedorSelecionado, setRecebedorSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   
-  // Gestão de EPIs Externos
+  const [dataEntrega, setDataEntrega] = useState(new Date().toISOString().split('T')[0]);
+  const [lotesPendentes, setLotesPendentes] = useState<any[]>([]);
+  
   const [origemEpi, setOrigemEpi] = useState<'interno' | 'externo'>('interno');
   const [episExternosSugeridos, setEpisExternosSugeridos] = useState<any[]>([]);
   const [nomeExterno, setNomeExterno] = useState('');
@@ -66,7 +68,25 @@ export default function Entrega() {
       setEpisExternosSugeridos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    return () => { unsubFunc(); unsubEstoque(); unsubExternos(); }
+    const unsubPendentes = onSnapshot(query(collection(db, 'entregas'), where('setorId', '==', setorAtivo), where('assinatura', '==', 'pendente')), (snap) => {
+      const lotesMap: any = {};
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        if (!lotesMap[data.loteId]) {
+          lotesMap[data.loteId] = { 
+            loteId: data.loteId, 
+            funcionarioNome: data.funcionarioNome, 
+            dataHora: data.dataHora?.toDate ? data.dataHora.toDate() : new Date(), 
+            itens: [] 
+          };
+        }
+        lotesMap[data.loteId].itens.push(data.itemNome);
+      });
+      const listaPendentes = Object.values(lotesMap).sort((a: any, b: any) => b.dataHora - a.dataHora);
+      setLotesPendentes(listaPendentes);
+    });
+
+    return () => { unsubFunc(); unsubEstoque(); unsubExternos(); unsubPendentes(); }
   }, [setorAtivo]);
 
   useEffect(() => {
@@ -108,25 +128,17 @@ export default function Entrega() {
     if (!recebedorSelecionado) return avisar("Selecione o recebedor.", "erro");
     if (Number(quantidadeDesejada) <= 0) return avisar("A quantidade deve ser maior que zero.", "erro");
     
-    // LÓGICA PARA EPI EXTERNO
     if (origemEpi === 'externo') {
       if (!nomeExterno.trim()) return avisar("Digite o nome do EPI do cliente.", "erro");
       
       setCarrinho([...carrinho, {
-        id: `ext-${Date.now()}`,
-        nome: `[HYUNDAI] ${nomeExterno}`,
-        quantidade: Number(quantidadeDesejada) || 1,
-        durabilidade: Number(durabilidadeManual) || 0,
-        isExterno: true,
-        caExterno: caExterno,
-        nomeOriginalExterno: nomeExterno
+        id: `ext-${Date.now()}`, nome: `[HYUNDAI] ${nomeExterno}`, quantidade: Number(quantidadeDesejada) || 1, durabilidade: Number(durabilidadeManual) || 0, isExterno: true, caExterno: caExterno, nomeOriginalExterno: nomeExterno
       }]);
       
       setNomeExterno(''); setCaExterno(''); setQuantidadeDesejada('1'); setDurabilidadeManual('');
       return;
     }
 
-    // LÓGICA PARA ESTOQUE INTERNO
     if (!itemSelecionado) return avisar("Selecione o material.", "erro");
     const itemData = estoque.find(i => i.id === itemSelecionado);
     const durabilidadeDesejada = Number(durabilidadeManual) || 0;
@@ -171,7 +183,6 @@ export default function Entrega() {
     setItemPendenteJustificativa(null);
   };
 
-  // ✨ ATUALIZADO: Agora aceita método Local ou via Link e corrige o erro do Firebase (undefined)
   const finalizarEntregaTotal = async (metodo: 'local' | 'link') => {
     if (metodo === 'local' && !assinaturaBase64) return avisar("Por favor, assine no quadro acima.", "erro");
     if (carrinho.length === 0) return avisar("O carrinho está vazio.", "erro");
@@ -180,12 +191,12 @@ export default function Entrega() {
     try {
       const horarioAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       const selecao = recebedores.find(r => r.id === recebedorSelecionado);
-      
-      // Gera um Lote Único para agrupar os itens desta entrega
       const loteUnicoId = `LOTE-${Date.now()}`;
 
+      const partesData = dataEntrega.split('-');
+      const dataReal = new Date(Number(partesData[0]), Number(partesData[1]) - 1, Number(partesData[2]), 12, 0, 0);
+
       for (const item of carrinho) {
-        
         if (item.isExterno) {
           const existe = episExternosSugeridos.find(e => e.nome.toLowerCase() === item.nomeOriginalExterno?.toLowerCase());
           if (!existe) {
@@ -193,7 +204,6 @@ export default function Entrega() {
           }
         }
 
-        // Registo da Entrega no Banco de Dados
         await addDoc(collection(db, 'entregas'), {
           setorId: setorAtivo, 
           funcionarioId: recebedorSelecionado, 
@@ -202,12 +212,12 @@ export default function Entrega() {
           itemNome: item.nome, 
           quantidade: item.quantidade, 
           durabilidade: item.durabilidade,
-          ca: item.isExterno ? (item.caExterno || '') : '', // Corrige o erro de "undefined"
+          ca: item.isExterno ? (item.caExterno || '') : '', 
           origem: item.isExterno ? 'externa_cliente' : 'estoque_interno',
           justificativa: item.justificativa || (item.isExterno ? "EPI Cedido pelo Cliente" : "Retirada Normal"),
-          assinatura: metodo === 'local' ? assinaturaBase64 : 'pendente', // Define como pendente se for por link
+          assinatura: metodo === 'local' ? assinaturaBase64 : 'pendente',
           loteId: loteUnicoId, 
-          dataHora: serverTimestamp(), 
+          dataHora: dataReal,
           horarioEntrega: horarioAgora, 
           recebedorTipo: selecao.tipo
         });
@@ -225,7 +235,6 @@ export default function Entrega() {
         }
       }
 
-      // Se for via link, gera a URL pública e abre o WhatsApp
       if (metodo === 'link') {
         const url = `${window.location.origin}/assinar-epi/${loteUnicoId}`;
         const texto = `Olá ${selecao.nome}! A Carvalho Pintura registou a entrega de EPIs para si.\n\nPor favor, acesse o link abaixo pelo seu telemóvel para conferir os itens e realizar a assinatura digital (obrigatório):\n\n🔗 *Acessar Ficha de EPI:*\n${url}`;
@@ -234,9 +243,39 @@ export default function Entrega() {
 
       avisar(metodo === 'link' ? "Entrega registada! Link gerado." : "Processo finalizado com sucesso!"); 
       setCarrinho([]); setAssinaturaBase64(''); setRecebedorSelecionado('');
+      setDataEntrega(new Date().toISOString().split('T')[0]);
     } catch (e) { 
       console.error(e);
       avisar("Erro ao salvar lote.", "erro"); 
+    }
+    setSalvando(false);
+  };
+
+  const copiarLinkPendente = (loteId: string) => {
+    const url = `${window.location.origin}/assinar-epi/${loteId}`;
+    navigator.clipboard.writeText(url);
+    avisar("Link de assinatura copiado para a área de transferência!");
+  };
+
+  // 🧠 INTELIGÊNCIA: Função para Excluir o Lote Pendente Inteiro
+  const excluirLotePendente = async (loteId: string) => {
+    const confirmacao = window.confirm("Tem certeza que deseja excluir esta entrega? Todos os registos deste lote serão apagados.");
+    if (!confirmacao) return;
+
+    setSalvando(true);
+    try {
+      // 1. Procura todas as entregas registadas com este loteId
+      const q = query(collection(db, 'entregas'), where('loteId', '==', loteId));
+      const snap = await getDocs(q);
+      
+      // 2. Apaga cada documento encontrado
+      const deletePromises = snap.docs.map(d => deleteDoc(doc(db, 'entregas', d.id)));
+      await Promise.all(deletePromises);
+      
+      avisar("Entrega pendente excluída com sucesso!");
+    } catch (error) {
+      console.error(error);
+      avisar("Erro ao excluir lote de entrega.", "erro");
     }
     setSalvando(false);
   };
@@ -258,11 +297,26 @@ export default function Entrega() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>RECEBEDOR *</label>
-            <select value={recebedorSelecionado} onChange={e => setRecebedorSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', outline: 'none' }}>
-              <option value="">Selecione o colaborador ou sócio...</option>
-              {recebedores.map(r => <option key={r.id} value={r.id}>{r.tipo === 'socio' ? `[SÓCIO] ${r.nome}` : r.nome}</option>)}
-            </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '15px', marginBottom: '15px' }}>
+              <div>
+                <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>RECEBEDOR *</label>
+                <select value={recebedorSelecionado} onChange={e => setRecebedorSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', outline: 'none' }}>
+                  <option value="">Selecione o colaborador...</option>
+                  {recebedores.map(r => <option key={r.id} value={r.id}>{r.tipo === 'socio' ? `[SÓCIO] ${r.nome}` : r.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>
+                  <Calendar size={14}/> DATA
+                </label>
+                <input 
+                  type="date" 
+                  value={dataEntrega} 
+                  onChange={e => setDataEntrega(e.target.value)}
+                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', outline: 'none', backgroundColor: 'white' }}
+                />
+              </div>
+            </div>
 
             {pendenciasFuncionario.length > 0 && (
               <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px' }}>
@@ -282,16 +336,10 @@ export default function Entrega() {
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
             
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <button 
-                onClick={() => setOrigemEpi('interno')} 
-                style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', border: origemEpi === 'interno' ? '2px solid #3b82f6' : '1px solid #e2e8f0', backgroundColor: origemEpi === 'interno' ? '#eff6ff' : '#f8fafc', color: origemEpi === 'interno' ? '#1d4ed8' : '#64748b', cursor: 'pointer' }}
-              >
+              <button onClick={() => setOrigemEpi('interno')} style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', border: origemEpi === 'interno' ? '2px solid #3b82f6' : '1px solid #e2e8f0', backgroundColor: origemEpi === 'interno' ? '#eff6ff' : '#f8fafc', color: origemEpi === 'interno' ? '#1d4ed8' : '#64748b', cursor: 'pointer' }}>
                 <HardHat size={16}/> Estoque Interno
               </button>
-              <button 
-                onClick={() => setOrigemEpi('externo')} 
-                style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', border: origemEpi === 'externo' ? '2px solid #8b5cf6' : '1px solid #e2e8f0', backgroundColor: origemEpi === 'externo' ? '#faf5ff' : '#f8fafc', color: origemEpi === 'externo' ? '#6d28d9' : '#64748b', cursor: 'pointer' }}
-              >
+              <button onClick={() => setOrigemEpi('externo')} style={{ flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', border: origemEpi === 'externo' ? '2px solid #8b5cf6' : '1px solid #e2e8f0', backgroundColor: origemEpi === 'externo' ? '#faf5ff' : '#f8fafc', color: origemEpi === 'externo' ? '#6d28d9' : '#64748b', cursor: 'pointer' }}>
                 <Building2 size={16}/> EPI Hyundai
               </button>
             </div>
@@ -305,25 +353,12 @@ export default function Entrega() {
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginBottom: '15px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6d28d9', display: 'block', marginBottom: '5px' }}>Nome do EPI Cedido</label>
-                  <input 
-                    list="lista-epis-externos" 
-                    value={nomeExterno} 
-                    onChange={e => handleSelectExterno(e.target.value)} 
-                    placeholder="Ex: Luva Anticorte..." 
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #c4b5fd', outline: 'none' }} 
-                  />
-                  <datalist id="lista-epis-externos">
-                    {episExternosSugeridos.map(e => <option key={e.id} value={e.nome} />)}
-                  </datalist>
+                  <input list="lista-epis-externos" value={nomeExterno} onChange={e => handleSelectExterno(e.target.value)} placeholder="Ex: Luva Anticorte..." style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #c4b5fd', outline: 'none' }} />
+                  <datalist id="lista-epis-externos">{episExternosSugeridos.map(e => <option key={e.id} value={e.nome} />)}</datalist>
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#6d28d9', display: 'block', marginBottom: '5px' }}>C.A.</label>
-                  <input 
-                    value={caExterno} 
-                    onChange={e => setCaExterno(e.target.value)} 
-                    placeholder="Opcional" 
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #c4b5fd', outline: 'none' }} 
-                  />
+                  <input value={caExterno} onChange={e => setCaExterno(e.target.value)} placeholder="Opcional" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #c4b5fd', outline: 'none' }} />
                 </div>
               </div>
             )}
@@ -360,44 +395,86 @@ export default function Entrega() {
           </div>
         </div>
 
-        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <h3 style={{ fontSize: '16px', color: '#1e293b', margin: 0 }}>Recibo e Assinatura</h3>
-          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>A assinatura confirma o recebimento dos itens listados acima.</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
-          <div 
-            onClick={() => {
-              const selecao = recebedores.find(r => r.id === recebedorSelecionado);
-              if (selecao?.tipo !== 'socio') setModalAssinaturaAberto(true);
-            }} 
-            style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: recebedores.find(r => r.id === recebedorSelecionado)?.tipo === 'socio' ? 'default' : 'pointer', backgroundColor: '#f8fafc', overflow: 'hidden' }}
-          >
-            {assinaturaBase64.startsWith('data:image') ? (
-              <img src={assinaturaBase64} style={{ maxHeight: '100%', maxWidth: '100%' }} /> 
-            ) : assinaturaBase64 === 'ASSINATURA DIGITAL (SÓCIO)' ? (
-              <div style={{ textAlign: 'center', color: '#10b981' }}><UserCheck size={50} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Assinatura Digital Ativada</p></div>
-            ) : (
-              <div style={{ textAlign: 'center', color: '#64748b' }}><PenTool size={40} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Toque para Assinar na Tela</p></div>
-            )}
+          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <h3 style={{ fontSize: '16px', color: '#1e293b', margin: 0 }}>Recibo e Assinatura</h3>
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>A assinatura confirma o recebimento dos itens listados acima.</p>
+            
+            <div 
+              onClick={() => {
+                const selecao = recebedores.find(r => r.id === recebedorSelecionado);
+                if (selecao?.tipo !== 'socio') setModalAssinaturaAberto(true);
+              }} 
+              style={{ height: '220px', border: '2px dashed #cbd5e1', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: recebedores.find(r => r.id === recebedorSelecionado)?.tipo === 'socio' ? 'default' : 'pointer', backgroundColor: '#f8fafc', overflow: 'hidden' }}
+            >
+              {assinaturaBase64.startsWith('data:image') ? (
+                <img src={assinaturaBase64} style={{ maxHeight: '100%', maxWidth: '100%' }} /> 
+              ) : assinaturaBase64 === 'ASSINATURA DIGITAL (SÓCIO)' ? (
+                <div style={{ textAlign: 'center', color: '#10b981' }}><UserCheck size={50} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Assinatura Digital Ativada</p></div>
+              ) : (
+                <div style={{ textAlign: 'center', color: '#64748b' }}><PenTool size={40} style={{ margin: '0 auto' }} /><p style={{ fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>Toque para Assinar na Tela</p></div>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <Button 
+                disabled={salvando || !assinaturaBase64 || carrinho.length === 0} 
+                onClick={() => finalizarEntregaTotal('local')} 
+                style={{ height: '50px', fontSize: '14px', fontWeight: 'bold', backgroundColor: assinaturaBase64 && carrinho.length > 0 ? '#10b981' : '#94a3b8' }}
+              >
+                <PenTool size={18} style={{ marginRight: '8px' }}/> {salvando ? 'PROCESSANDO...' : 'Salvar Assinatura'}
+              </Button>
+
+              <Button 
+                disabled={salvando || carrinho.length === 0 || !!assinaturaBase64} 
+                onClick={() => finalizarEntregaTotal('link')} 
+                style={{ height: '50px', fontSize: '14px', fontWeight: 'bold', backgroundColor: carrinho.length > 0 && !assinaturaBase64 ? '#3b82f6' : '#cbd5e1' }}
+              >
+                <Smartphone size={18} style={{ marginRight: '8px' }}/> Enviar por Link
+              </Button>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <Button 
-              disabled={salvando || !assinaturaBase64 || carrinho.length === 0} 
-              onClick={() => finalizarEntregaTotal('local')} 
-              style={{ height: '50px', fontSize: '14px', fontWeight: 'bold', backgroundColor: assinaturaBase64 && carrinho.length > 0 ? '#10b981' : '#94a3b8' }}
-            >
-              <PenTool size={18} style={{ marginRight: '8px' }}/> {salvando ? 'PROCESSANDO...' : 'Salvar Assinatura Local'}
-            </Button>
+          {lotesPendentes.length > 0 && (
+            <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fcd34d', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(245, 158, 11, 0.1)' }}>
+              <h3 style={{ fontSize: '15px', color: '#b45309', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={18} /> Aguardando Assinatura do Colaborador ({lotesPendentes.length})
+              </h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+                {lotesPendentes.map((lote) => (
+                  <div key={lote.loteId} style={{ backgroundColor: 'white', padding: '12px', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div>
+                        <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b' }}>{lote.funcionarioNome}</strong>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>Registado em: {lote.dataHora.toLocaleDateString('pt-BR')}</span>
+                      </div>
+                      
+                      {/* ✨ AQUI: Novos botões lado a lado (Copiar e Excluir) */}
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                          onClick={() => copiarLinkPendente(lote.loteId)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#3b82f6', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          <Copy size={12} /> Copiar
+                        </button>
+                        <button 
+                          onClick={() => excluirLotePendente(lote.loteId)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
+                          title="Excluir Lote"
+                        >
+                          <Trash2 size={12} /> Excluir
+                        </button>
+                      </div>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>Itens: {lote.itens.join(', ')}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-            <Button 
-              disabled={salvando || carrinho.length === 0 || !!assinaturaBase64} 
-              onClick={() => finalizarEntregaTotal('link')} 
-              style={{ height: '50px', fontSize: '14px', fontWeight: 'bold', backgroundColor: carrinho.length > 0 && !assinaturaBase64 ? '#3b82f6' : '#cbd5e1' }}
-              title="Salva os itens e envia um link para o funcionário assinar depois."
-            >
-              <Smartphone size={18} style={{ marginRight: '8px' }}/> Enviar Link (WhatsApp)
-            </Button>
-          </div>
         </div>
       </div>
 

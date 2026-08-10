@@ -1,13 +1,12 @@
 // src/components/funcionarios/ModalFicha.tsx
 import { useState, useEffect } from 'react';
-import { doc, updateDoc, collection, query, where, onSnapshot, Timestamp, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, onSnapshot, Timestamp, addDoc, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { X, UserPlus, AlertTriangle, Lock, Edit3, Shirt, UserMinus, UserCheck, Archive, History, Plus, GraduationCap, ShieldCheck, FileSignature } from 'lucide-react';
+import { X, UserPlus, AlertTriangle, Lock, Edit3, Shirt, UserMinus, UserCheck, Archive, History, Plus, GraduationCap, ShieldCheck, FileSignature, Trash2, Clock } from 'lucide-react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 
 import ModalTermo from './ModalTermo';
-// ✨ NOVO: Importação do modal da Ficha de EPI
 import ModalFichaEPI from './ModalFichaEPI';
 
 interface Props {
@@ -37,7 +36,6 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
   const [rgEdit, setRgEdit] = useState('');
 
   const [modalTermoAberto, setModalTermoAberto] = useState(false);
-  // ✨ NOVO: Controle de abertura do Modal da Ficha de EPI
   const [modalEPIAberto, setModalEPIAberto] = useState(false);
 
   useEffect(() => { setFichaAberta(funcionarioAberta); }, [funcionarioAberta]);
@@ -106,6 +104,32 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
     } catch (error) { avisar("Erro.", "erro"); }
   };
 
+  // 🧠 INTELIGÊNCIA: Função que anula a assinatura e devolve o lote inteiro para as pendências do Gestor
+  const removerAssinatura = async (loteId: string) => {
+    if (!loteId) return avisar("Não é possível remover a assinatura de um registo manual/antigo.", "erro");
+    
+    const confirmacao = window.confirm("Atenção: Deseja apagar a assinatura deste lote? Ele voltará automaticamente para a lista de pendências para ser assinado novamente.");
+    if (!confirmacao) return;
+
+    try {
+      // 1. Procura todas as peças de EPI entregues juntas nesse exato Lote
+      const q = query(collection(db, 'entregas'), where('loteId', '==', loteId));
+      const snap = await getDocs(q);
+      
+      // 2. Usamos o "writeBatch" para atualizar tudo de uma vez, sem falhas
+      const batch = writeBatch(db);
+      snap.forEach(d => {
+        batch.update(d.ref, { assinatura: 'pendente' });
+      });
+      
+      await batch.commit();
+      avisar("Assinatura apagada! O lote voltou para a secção de pendências.");
+    } catch (e) {
+      console.error(e);
+      avisar("Erro ao apagar a assinatura.", "erro");
+    }
+  };
+
   const nomesEstoque = Array.from(new Set(estoque.map(i => i.nome).filter(Boolean)));
   if (!fichaAberta) return null;
 
@@ -162,7 +186,6 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
               )}
             </div>
 
-            {/* ✨ DOCUMENTAÇÃO FORMAL - AGORA COM DOIS BOTÕES */}
             <div style={{ marginBottom: '25px', paddingBottom: '20px', borderBottom: '1px solid #e2e8f0' }}>
               <h4 style={{ fontSize: '13px', color: '#1e293b', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <FileSignature size={16} color="#0ea5e9" /> DOCUMENTAÇÃO FORMAL
@@ -243,12 +266,34 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {historicoEntregas.map(ent => (
                       <div key={ent.id} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', backgroundColor: ent.isRegistroAntigo ? '#fefce8' : '#ffffff' }}>
+                        
+                        {/* 1ª Linha: Título e Data */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <strong style={{ fontSize: '14px', color: '#1e293b' }}>{ent.quantidade}x {ent.itemNome}</strong>
                           <span style={{ fontSize: '11px', color: ent.isRegistroAntigo ? '#ca8a04' : '#64748b', backgroundColor: ent.isRegistroAntigo ? '#fef08a' : '#f1f5f9', padding: '2px 8px', borderRadius: '50px', fontWeight: 'bold' }}>
                             {ent.dataHora?.toDate().toLocaleDateString('pt-BR')}
                           </span>
                         </div>
+
+                        {/* ✨ 2ª Linha: VISUALIZAÇÃO E CONTROLE DA ASSINATURA */}
+                        {typeof ent.assinatura === 'string' && ent.assinatura.startsWith('data:image') && (
+                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #e2e8f0' }}>
+                             {/* Miniatura da Assinatura: Ajustada para caber no celular sem quebrar a tela */}
+                             <img src={ent.assinatura} alt="Assinatura" style={{ height: '35px', maxWidth: '100px', objectFit: 'contain', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '2px' }} />
+                             
+                             <button onClick={() => removerAssinatura(ent.loteId)} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                               <Trash2 size={12} /> Apagar Assinatura
+                             </button>
+                           </div>
+                        )}
+
+                        {/* Aviso visual se o item ainda estiver aguardando assinatura */}
+                        {ent.assinatura === 'pendente' && (
+                           <div style={{ marginTop: '8px', fontSize: '11px', color: '#d97706', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                             <Clock size={12} /> Assinatura Pendente (Ver painel de entregas)
+                           </div>
+                        )}
+
                       </div>
                     ))}
                   </div>
@@ -256,7 +301,7 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
               </div>
             </div>
 
-            {/* TREINAMENTOS E DSS (LADO A LADO NA TELA GRANDE) */}
+            {/* TREINAMENTOS E DSS */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
               <div>
                 <div style={{ borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', marginBottom: '15px' }}>
@@ -320,7 +365,6 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
         </div>
       )}
 
-      {/* RENDERIZAÇÃO DOS MODAIS DE DOCUMENTOS */}
       <ModalTermo 
         aberto={modalTermoAberto} 
         funcionario={fichaAberta}
@@ -329,7 +373,6 @@ export default function ModalFicha({ funcionarioAberta, onClose, estoque, treina
         avisar={avisar} 
       />
 
-      {/* ✨ RENDERIZAÇÃO DA NOSSA NOVA FICHA DE EPI */}
       <ModalFichaEPI 
         aberto={modalEPIAberto} 
         funcionario={fichaAberta} 
