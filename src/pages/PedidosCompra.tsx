@@ -51,7 +51,6 @@ export default function PedidosCompra() {
   const [modalAssinaturaAberta, setModalAssinaturaAberta] = useState(false);
   const [colaboradorUniforme, setColaboradorUniforme] = useState('');
 
-  // 🧠 INTELIGÊNCIA: Estados para controlar a quantidade flexível de uniformes
   const [qtdUniforme, setQtdUniforme] = useState(1);
   const [qtdCalcado, setQtdCalcado] = useState(1);
 
@@ -94,14 +93,12 @@ export default function PedidosCompra() {
     setNomeManual(''); setMarcaManual(''); setCaManual(''); setNcmManual(''); setQtdManual(1);
   };
 
-  // 🧠 INTELIGÊNCIA: Adicionar o Kit respeitando as quantidades exatas escolhidas
   const addKitUniforme = () => {
     const func = funcionarios.find(f => f.id === colaboradorUniforme);
     if (!func) return;
 
     const novosItens: ItemPedido[] = [];
     
-    // Só adiciona se o tamanho existe e a quantidade desejada é MAIOR que 0
     if (func.tamanhoUniforme && func.tamanhoUniforme !== 'Não informado' && qtdUniforme > 0) {
       novosItens.push({ 
         id: `kit-uni-${Date.now()}`, 
@@ -127,6 +124,14 @@ export default function PedidosCompra() {
 
     setItens([...itens, ...novosItens]);
     setColaboradorUniforme(''); 
+  };
+
+  // ✨ NOVO: Função para atualizar a quantidade diretamente no carrinho
+  const atualizarQtdItemCarrinho = (index: number, novaQtd: number) => {
+    if (novaQtd < 1) return; // Garante que a quantidade nunca seja zero ou negativa
+    const novosItens = [...itens];
+    novosItens[index].quantidade = novaQtd;
+    setItens(novosItens);
   };
 
   const gerarPDF = (dados: any, estilo: 'simples' | 'personalizado' | 'entrega_epi', assinaturaBase64?: string) => {
@@ -269,7 +274,6 @@ export default function PedidosCompra() {
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
-          {/* 👕 INTELIGÊNCIA: Consulta de Tamanhos de Uniforme Editável */}
           <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', borderTop: '4px solid #8b5cf6', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: '#475569' }}>
               <Shirt size={18} /> Pedido Rápido de Uniformes
@@ -281,7 +285,6 @@ export default function PedidosCompra() {
               onChange={e => {
                 const id = e.target.value;
                 setColaboradorUniforme(id);
-                // Pré-preenche as quantidades com 1 se existir tamanho, e 0 se não tiver registo
                 const func = funcionarios.find(f => f.id === id);
                 if (func) {
                   setQtdUniforme(func.tamanhoUniforme && func.tamanhoUniforme !== 'Não informado' ? 1 : 0);
@@ -299,7 +302,6 @@ export default function PedidosCompra() {
                 <h4 style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#1e293b' }}>Selecione as Quantidades:</h4>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
-                  {/* Linha do Uniforme */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '13px', color: '#475569' }}>
                       <strong>Uniforme</strong> (Tam: {funcUniformeSelecionado.tamanhoUniforme || 'N/A'})
@@ -313,7 +315,6 @@ export default function PedidosCompra() {
                     />
                   </div>
 
-                  {/* Linha do Calçado */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '13px', color: '#475569' }}>
                       <strong>Calçado</strong> (Tam: {funcUniformeSelecionado.tamanhoCalcado || 'N/A'})
@@ -347,7 +348,8 @@ export default function PedidosCompra() {
                     <span style={{fontSize: '14px', fontWeight: '500', color: '#334155'}}>{item.nome}</span>
                     <div style={{display:'flex', gap:'8px'}}>
                       <input type="number" min="1" defaultValue="1" onChange={e => setQtdsBusca({...qtdsBusca, [item.id]: Number(e.target.value)})} style={{width:'50px', border:'1px solid #cbd5e1', borderRadius:'6px', textAlign: 'center'}}/>
-                      <Button onClick={() => addItemEstoque(item)} style={{padding:'8px', backgroundColor: '#3b82f6'}}><Plus size={16}/></Button>
+                      {/* ✨ CORREÇÃO: O botão agora chama a função correta (addItemAoCarrinho) */}
+                      <Button onClick={() => addItemAoCarrinho(item)} style={{padding:'8px', backgroundColor: '#3b82f6'}}><Plus size={16}/></Button>
                     </div>
                   </div>
                 ))}
@@ -384,11 +386,24 @@ export default function PedidosCompra() {
             {itens.length > 0 ? (
               itens.map((i, idx) => (
                 <div key={idx} style={{ padding: '12px 15px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <span style={{fontSize:'14px', color: '#0f172a'}}><strong>{i.quantidade}x</strong> {i.nome}</span>
-                    {(i.ca || i.marca) && <span style={{display: 'block', fontSize: '11px', color: '#64748b', marginTop: '4px'}}>CA: {i.ca || 'N/A'} | Ref: {i.marca || 'N/A'}</span>}
+                  
+                  {/* ✨ NOVO: Interface de edição de quantidade dentro do carrinho */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      value={i.quantidade} 
+                      onChange={(e) => atualizarQtdItemCarrinho(idx, Number(e.target.value))}
+                      style={{ width: '60px', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '8px', textAlign: 'center', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: 'white' }}
+                      title="Alterar quantidade"
+                    />
+                    <div>
+                      <span style={{fontSize:'14px', color: '#0f172a', fontWeight: '600'}}>{i.nome}</span>
+                      {(i.ca || i.marca) && <span style={{display: 'block', fontSize: '11px', color: '#64748b', marginTop: '4px'}}>CA: {i.ca || 'N/A'} | Ref: {i.marca || 'N/A'}</span>}
+                    </div>
                   </div>
-                  <button onClick={() => setItens(itens.filter((_, x) => x !== idx))} style={{ color: '#ef4444', border: 'none', background: '#fee2e2', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><Trash2 size={16}/></button>
+
+                  <button onClick={() => setItens(itens.filter((_, x) => x !== idx))} style={{ color: '#ef4444', border: 'none', background: '#fee2e2', padding: '8px', borderRadius: '8px', cursor: 'pointer', flexShrink: 0 }}><Trash2 size={16}/></button>
                 </div>
               ))
             ) : (
