@@ -26,6 +26,7 @@ export default function TerminalPontoPublico() {
 
   const [sucesso, setSucesso] = useState({ visivel: false, mensagem: '', horaExata: '' });
 
+  // Relógio em Tempo Real
   useEffect(() => {
     const timer = setInterval(() => setHoraAtual(new Date()), 1000);
     return () => clearInterval(timer);
@@ -173,7 +174,7 @@ export default function TerminalPontoPublico() {
   const gravarPontoNoBanco = async (campoPonto: string, assinaturaBase64: string, coords?: {lat: number, lng: number} | null) => {
     const dataHojeStr = new Date().toISOString().split('T')[0];
     
-    // ✨ ATUALIZAÇÃO: Guardar a hora com SEGUNDOS no banco de dados para o Terminal exibir
+    // A hora é gravada com os segundos exatos no banco
     const horaParaBancoComSegundos = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     
     const idRegistro = `${funcionario.id}_${dataHojeStr}`;
@@ -212,9 +213,9 @@ export default function TerminalPontoPublico() {
     }
   };
 
+  // ✨ CORREÇÃO: Garantir que a hora é gerada num bloco único e seguro "HH:MM:SS"
   const dataFormatada = horaAtual.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-  const horaFormatada = horaAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  const segundosFormatados = horaAtual.toLocaleTimeString('pt-BR', { second: '2-digit' }).split(':')[2];
+  const horaCompleta = horaAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   const CartaoHorario = ({ titulo, hora }: { titulo: string, hora?: string }) => {
     const preenchido = hora && hora !== '--:--';
@@ -251,9 +252,11 @@ export default function TerminalPontoPublico() {
           <div style={{ position: 'relative', zIndex: 1 }}>
             <h2 style={{ margin: 0, color: '#94a3b8', fontSize: '14px', textTransform: 'capitalize', fontWeight: '500' }}>{dataFormatada}</h2>
             
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '4px', margin: '15px 0' }}>
-              <span style={{ fontSize: '64px', fontWeight: '800', letterSpacing: '-2px', lineHeight: '1' }}>{horaFormatada}</span>
-              <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#10b981' }}>:{segundosFormatados}</span>
+            {/* ✨ CORREÇÃO: Relógio unificado e com fonte monoespaçada para não "tremer" a tela */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '15px 0' }}>
+              <span style={{ fontSize: '56px', fontWeight: '900', letterSpacing: '-1px', lineHeight: '1', fontFamily: 'monospace', color: 'white' }}>
+                {horaCompleta}
+              </span>
             </div>
             
             <p style={{ margin: 0, color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
