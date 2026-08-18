@@ -22,7 +22,7 @@ import GestaoPonto from './pages/GestaoPonto';
 
 // Assinaturas Públicas
 import AssinaturaExterna from './pages/AssinaturaExterna'; 
-import AssinaturaEPI from './pages/AssinaturaEPI';
+import AssinaturaEpiExterna from './pages/AssinaturaEpiExterna';
 import AssinaturaCronograma from './pages/AssinaturaCronograma';
 
 export default function App() {
@@ -33,7 +33,7 @@ export default function App() {
         {/* === ROTAS PÚBLICAS === */}
         <Route path="/" element={<Login />} />
         <Route path="/assinar-os/:id" element={<AssinaturaExterna />} />
-        <Route path="/assinatura-epi" element={<AssinaturaEPI />} />
+        <Route path="/assinar-epi/:loteId" element={<AssinaturaEpiExterna />} />
         <Route path="/assinatura-cronograma" element={<AssinaturaCronograma />} />
         
         {/* ✨ ROTA PÚBLICA DO PONTO (Link fixo para os funcionários) */}
