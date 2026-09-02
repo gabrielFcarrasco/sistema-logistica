@@ -9,7 +9,7 @@ import logoCarvalho from '../assets/logopdf.png';
 
 import { 
   FileSignature, CheckCircle2, AlertCircle, 
-  Plus, Trash2, Calculator, Download, Briefcase, Users
+  Plus, Trash2, Calculator, Download, Briefcase, Users, Edit3, X
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -25,6 +25,9 @@ export default function Orcamentos() {
 
   const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico'>('novo');
   const [notificacao, setNotificacao] = useState<{msg: string, tipo: 'sucesso' | 'erro'} | null>(null);
+
+  // ✏️ EDIÇÃO: Variável que guarda qual orçamento estamos editando no momento
+  const [orcamentoEditandoId, setOrcamentoEditandoId] = useState<string | null>(null);
 
   // Estados do Formulário do Cliente
   const [clientesSalvos, setClientesSalvos] = useState<any[]>([]);
@@ -48,7 +51,6 @@ export default function Orcamentos() {
   useEffect(() => {
     if (!setorAtivo) return;
     
-    // Escuta os Orçamentos
     const qOrcamentos = query(collection(db, 'orcamentos'), where('setorId', '==', setorAtivo));
     const unsubOrcamentos = onSnapshot(qOrcamentos, (snap) => {
       const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -56,7 +58,6 @@ export default function Orcamentos() {
       setHistoricoOrcamentos(lista);
     });
 
-    // Escuta os Clientes Salvos
     const unsubClientes = onSnapshot(collection(db, 'clientes'), (snap) => {
       setClientesSalvos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -64,7 +65,6 @@ export default function Orcamentos() {
     return () => { unsubOrcamentos(); unsubClientes(); };
   }, [setorAtivo]);
 
-  // Lógica de Auto-Completar Inteligente
   const handleNomeClienteChange = (nomeDigitado: string) => {
     setClienteNome(nomeDigitado);
     
@@ -79,7 +79,6 @@ export default function Orcamentos() {
     }
   };
 
-  // Manipulação de Itens
   const adicionarItem = () => setItens([...itens, { quantidade: 1, descricao: '', valorUnitario: 0 }]);
   const removerItem = (index: number) => setItens(itens.filter((_, i) => i !== index));
   const atualizarItem = (index: number, campo: keyof ItemOrcamento, valor: any) => {
@@ -91,7 +90,27 @@ export default function Orcamentos() {
   const calcularTotalGeral = () => itens.reduce((acc, item) => acc + (item.quantidade * item.valorUnitario), 0);
   const formatarMoeda = (valor: number) => valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-  // GERADOR DE PDF OFICIAL
+  // ✏️ EDIÇÃO: Função para limpar os campos e resetar o formulário para um Orçamento em branco
+  const prepararNovoOrcamento = () => {
+    setOrcamentoEditandoId(null);
+    setClienteNome(''); setClienteDoc(''); setClienteContato(''); setObservacoes(''); setPrazoEntrega('');
+    setItens([{ quantidade: 1, descricao: '', valorUnitario: 0 }]);
+    setAbaAtiva('novo');
+  };
+
+  // ✏️ EDIÇÃO: Função que pega os dados do histórico e injeta no formulário
+  const iniciarEdicao = (orcamento: any) => {
+    setOrcamentoEditandoId(orcamento.id);
+    setClienteNome(orcamento.clienteNome || '');
+    setClienteDoc(orcamento.clienteDoc || '');
+    setClienteContato(orcamento.clienteContato || '');
+    setPrazoEntrega(orcamento.prazoEntrega || '');
+    setObservacoes(orcamento.observacoes || '');
+    setItens(orcamento.itens || [{ quantidade: 1, descricao: '', valorUnitario: 0 }]);
+    setAbaAtiva('novo'); // Muda a aba automaticamente para a área de edição
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Sobe a tela suavemente
+  };
+
   const gerarPDF = (dados: any) => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const azulEscuro = [30, 41, 59];
@@ -105,7 +124,6 @@ export default function Orcamentos() {
     docPdf.text(`Orçamento Nº: ${numeroOrcamento}`, 195, 15, { align: 'right' });
     docPdf.text(`Data: ${dataDoc}`, 195, 20, { align: 'right' });
     
-    // INFORMAÇÕES DA CARVALHO
     docPdf.setFontSize(9);
     docPdf.text("CARVALHO FUNILARIA E PINTURAS LTDA", 195, 25, { align: 'right' });
     docPdf.text("CNPJ: 31.362.302/0001-33", 195, 29, { align: 'right' });
@@ -114,7 +132,6 @@ export default function Orcamentos() {
     
     docPdf.setLineWidth(0.5); docPdf.line(15, 41, 195, 41);
 
-    // DADOS DO CLIENTE
     docPdf.setFillColor(241, 245, 249); docPdf.rect(15, 46, 180, 25, "F");
     docPdf.setFontSize(9); docPdf.setTextColor(0, 0, 0);
     docPdf.setFont("helvetica", "bold"); docPdf.text("DADOS DO CLIENTE", 18, 51);
@@ -123,7 +140,6 @@ export default function Orcamentos() {
     docPdf.text(`CNPJ / CPF: ${dados.clienteDoc || 'Não informado'}`, 18, 62);
     docPdf.text(`Contato / Email: ${dados.clienteContato || 'Não informado'}`, 18, 67);
 
-    // TABELA DE ITENS
     const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
     renderTable(docPdf, {
       startY: 78,
@@ -142,7 +158,6 @@ export default function Orcamentos() {
 
     const finalY = (docPdf as any).lastAutoTable.finalY;
 
-    // TOTAL GERAL
     docPdf.setFillColor(241, 245, 249);
     docPdf.rect(125, finalY + 5, 70, 12, "F");
     docPdf.setFontSize(12); docPdf.setFont("helvetica", "bold");
@@ -151,7 +166,6 @@ export default function Orcamentos() {
     docPdf.text(formatarMoeda(dados.total), 190, finalY + 13, { align: 'right' });
     docPdf.setTextColor(0, 0, 0);
 
-    // OBSERVAÇÕES E PRAZOS (Dinâmico e Limpo)
     docPdf.setFontSize(10); docPdf.setFont("helvetica", "bold");
     docPdf.text("PRAZOS E OBSERVAÇÕES", 15, finalY + 30);
     docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(9);
@@ -168,7 +182,6 @@ export default function Orcamentos() {
       docPdf.text(splitObs, 15, currentY);
     }
 
-    // ASSINATURA CLIENTE
     const yAssinatura = 260;
     docPdf.setDrawColor(0,0,0); docPdf.setLineWidth(0.5);
     docPdf.line(65, yAssinatura, 145, yAssinatura);
@@ -185,43 +198,63 @@ export default function Orcamentos() {
 
     try {
       const total = calcularTotalGeral();
-      const novoOrcamento = {
+      const dadosBase = {
         setorId: setorAtivo, clienteNome, clienteDoc, clienteContato,
-        prazoEntrega, observacoes,
-        itens, total, dataEmissao: serverTimestamp()
+        prazoEntrega, observacoes, itens, total
       };
 
-      // 1. Salva o Orçamento
-      const docRef = await addDoc(collection(db, 'orcamentos'), novoOrcamento);
-      
-      // 2. INTELIGÊNCIA CRM: Verifica o Cliente
-      const clienteExistente = clientesSalvos.find(c => c.nome.toLowerCase() === clienteNome.toLowerCase());
-      
-      if (!clienteExistente) {
-        await addDoc(collection(db, 'clientes'), {
-          nome: clienteNome,
-          documento: clienteDoc,
-          contato: clienteContato,
-          createdAt: serverTimestamp()
+      let orcamentoIdParaPDF = orcamentoEditandoId;
+      let dataOriginalParaPDF = new Date();
+
+      // ✏️ EDIÇÃO: Decide inteligentemente se vai criar um novo ou atualizar o existente
+      if (orcamentoEditandoId) {
+        // Atualizar orçamento existente
+        const docRef = doc(db, 'orcamentos', orcamentoEditandoId);
+        await updateDoc(docRef, {
+          ...dadosBase,
+          dataAtualizacao: serverTimestamp() // Apenas para auditoria, a data de emissão não muda
         });
-      } else {
-        if (clienteExistente.documento !== clienteDoc || clienteExistente.contato !== clienteContato) {
-          await updateDoc(doc(db, 'clientes', clienteExistente.id), {
-            documento: clienteDoc,
-            contato: clienteContato
-          });
+        
+        // Mantém a data original no PDF
+        const orcOriginal = historicoOrcamentos.find(o => o.id === orcamentoEditandoId);
+        if (orcOriginal && orcOriginal.dataEmissao) {
+          dataOriginalParaPDF = orcOriginal.dataEmissao.toDate();
         }
+        
+        avisar("Orçamento atualizado com sucesso!");
+      } else {
+        // Criar orçamento novo
+        const docRef = await addDoc(collection(db, 'orcamentos'), {
+          ...dadosBase,
+          dataEmissao: serverTimestamp()
+        });
+        orcamentoIdParaPDF = docRef.id;
+        avisar("Orçamento salvo e PDF gerado!");
       }
       
-      // 3. Gera o PDF na hora
-      gerarPDF({ id: docRef.id, ...novoOrcamento, dataEmissao: { toDate: () => new Date() } });
+      // Inteligência de Clientes
+      const clienteExistente = clientesSalvos.find(c => c.nome.toLowerCase() === clienteNome.toLowerCase());
+      if (!clienteExistente) {
+        await addDoc(collection(db, 'clientes'), {
+          nome: clienteNome, documento: clienteDoc, contato: clienteContato, createdAt: serverTimestamp()
+        });
+      } else if (clienteExistente.documento !== clienteDoc || clienteExistente.contato !== clienteContato) {
+        await updateDoc(doc(db, 'clientes', clienteExistente.id), {
+          documento: clienteDoc, contato: clienteContato
+        });
+      }
       
-      avisar("Orçamento salvo e PDF gerado!");
+      // Gera o PDF (com o ID novo ou o ID que acabamos de editar)
+      gerarPDF({ 
+        id: orcamentoIdParaPDF, 
+        ...dadosBase, 
+        dataEmissao: { toDate: () => dataOriginalParaPDF } 
+      });
       
-      // Limpar form
-      setClienteNome(''); setClienteDoc(''); setClienteContato(''); setObservacoes(''); setPrazoEntrega('');
-      setItens([{ quantidade: 1, descricao: '', valorUnitario: 0 }]);
+      // Prepara o sistema para um novo orçamento depois de salvar
+      prepararNovoOrcamento();
       setAbaAtiva('historico');
+
     } catch (error) { avisar("Erro ao salvar.", "erro"); }
   };
 
@@ -234,7 +267,6 @@ export default function Orcamentos() {
         </div>
       )}
 
-      {/* HEADER */}
       <div style={{ marginBottom: '25px' }}>
         <h1 style={{ fontSize: '24px', color: '#1e293b', margin: '0 0 5px 0', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <FileSignature color="#3b82f6" /> Orçamentos e Propostas
@@ -243,7 +275,7 @@ export default function Orcamentos() {
       </div>
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' }}>
-        <Button onClick={() => setAbaAtiva('novo')} style={{ flex: 1, backgroundColor: abaAtiva === 'novo' ? '#3b82f6' : '#e2e8f0', color: abaAtiva === 'novo' ? 'white' : '#475569' }}>
+        <Button onClick={prepararNovoOrcamento} style={{ flex: 1, backgroundColor: abaAtiva === 'novo' ? '#3b82f6' : '#e2e8f0', color: abaAtiva === 'novo' ? 'white' : '#475569' }}>
           <Plus size={18} style={{marginRight: '5px'}}/> Novo Orçamento
         </Button>
         <Button onClick={() => setAbaAtiva('historico')} style={{ flex: 1, backgroundColor: abaAtiva === 'historico' ? '#1e293b' : '#e2e8f0', color: abaAtiva === 'historico' ? 'white' : '#475569' }}>
@@ -252,9 +284,20 @@ export default function Orcamentos() {
       </div>
 
       {abaAtiva === 'novo' && (
-        <form onSubmit={salvarEGerarOrcamento} style={{ backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+        <form onSubmit={salvarEGerarOrcamento} style={{ backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: orcamentoEditandoId ? '2px solid #f59e0b' : 'none' }}>
           
-          {/* DADOS DO CLIENTE (COM AUTOCOMPLETE INTELIGENTE) */}
+          {/* ✏️ EDIÇÃO: Aviso visual para você não se perder e saber que está alterando algo existente */}
+          {orcamentoEditandoId && (
+            <div style={{ backgroundColor: '#fffbeb', border: '1px dashed #fcd34d', padding: '15px', borderRadius: '12px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: 'bold' }}>
+                <Edit3 size={18} /> Editando Orçamento Nº {orcamentoEditandoId.slice(-6).toUpperCase()}
+              </div>
+              <Button type="button" onClick={prepararNovoOrcamento} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', fontSize: '12px', padding: '6px 12px', height: 'auto' }}>
+                <X size={14} style={{ marginRight: '4px' }}/> Cancelar Edição
+              </Button>
+            </div>
+          )}
+
           <h3 style={{ fontSize: '15px', color: '#1e293b', margin: '0 0 15px 0', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Users size={18} color="#3b82f6"/> 1. Dados do Cliente
           </h3>
@@ -286,7 +329,6 @@ export default function Orcamentos() {
             </button>
           </div>
 
-          {/* Carrinho de Itens */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '20px' }}>
             {itens.map((item, index) => (
               <div key={index} style={{ display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
@@ -327,8 +369,12 @@ export default function Orcamentos() {
             <textarea rows={3} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Ex: Impostos inclusos. Frete por conta do cliente..." style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
           </div>
 
-          <Button type="submit" style={{ width: '100%', height: '55px', backgroundColor: '#3b82f6', fontSize: '16px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
-            <Calculator size={20}/> Salvar e Gerar PDF Oficial
+          <Button type="submit" style={{ width: '100%', height: '55px', backgroundColor: orcamentoEditandoId ? '#f59e0b' : '#3b82f6', fontSize: '16px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+            {orcamentoEditandoId ? (
+               <><Edit3 size={20}/> Atualizar Orçamento e Gerar PDF</>
+            ) : (
+               <><Calculator size={20}/> Salvar e Gerar PDF Oficial</>
+            )}
           </Button>
 
         </form>
@@ -346,9 +392,16 @@ export default function Orcamentos() {
                   <span style={{ fontSize: '12px', color: '#64748b' }}>Orçamento Nº {orc.id.slice(-6).toUpperCase()} • {orc.dataEmissao?.toDate().toLocaleDateString('pt-BR')}</span>
                   <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#475569' }}><strong>Total:</strong> {formatarMoeda(orc.total)} ({orc.itens?.length} itens)</p>
                 </div>
-                <Button onClick={() => gerarPDF(orc)} style={{ backgroundColor: '#e0e7ff', color: '#4f46e5', border: 'none' }}>
-                  <Download size={18} style={{marginRight: '5px'}}/> Baixar PDF
-                </Button>
+                
+                {/* ✏️ EDIÇÃO: Inclusão do botão de editar ao lado de baixar o PDF */}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <Button onClick={() => iniciarEdicao(orc)} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }} title="Editar este Orçamento">
+                    <Edit3 size={18} />
+                  </Button>
+                  <Button onClick={() => gerarPDF(orc)} style={{ backgroundColor: '#e0e7ff', color: '#4f46e5', border: 'none' }}>
+                    <Download size={18} style={{marginRight: '5px'}}/> Baixar PDF
+                  </Button>
+                </div>
               </div>
             ))
           )}
