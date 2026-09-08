@@ -2,9 +2,10 @@
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { dbFolha } from './firebaseFolha';
 import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import autoTable from "jspdf-autotable"; 
 import logoCarvalho from '../assets/logopdf.png'; 
 
+// Funções Matemáticas Auxiliares
 const converterParaMinutos = (horaStr?: string) => {
   if (!horaStr || horaStr === '--:--') return 0;
   const [h, m] = horaStr.substring(0, 5).split(':').map(Number);
@@ -29,7 +30,7 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
 
   const anoNum = parseInt(mesExport.split('-')[0]);
   const mesNum = parseInt(mesExport.split('-')[1]);
-  const diasNoMes = new Date(anoNum, mesNum, 0).getDate();
+  const diasNoMes = new Date(anoNum, mesNum, 0).getDate(); // Identifica se o mês tem 28, 30 ou 31 dias
   
   const inicioMes = `${mesExport}-01`;
   const fimMes = `${mesExport}-${String(diasNoMes).padStart(2, '0')}`;
@@ -56,7 +57,6 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
     let totalDiasTrabalhados = 0;
     const tableData: any[] = [];
     
-    // ✍️ DICIONÁRIO DE ASSINATURAS: Vamos guardar os desenhos em base64 atrelados a cada data
     const assinaturasMap: Record<string, string> = {}; 
 
     for (let dia = 1; dia <= diasNoMes; dia++) {
@@ -72,7 +72,7 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
       let retorno = '--:--';
       let saidaFim = '--:--';
       let status = '';
-      let textAssinatura = '-'; // Esse texto vai para o PDF se não tiver assinatura
+      let textAssinatura = '-'; 
 
       if (registroDia) {
         entrada = formatarHoraLimpa(registroDia.entrada1);
@@ -80,7 +80,6 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
         retorno = formatarHoraLimpa(registroDia.entrada2);
         saidaFim = formatarHoraLimpa(registroDia.saida2);
 
-        // Se existir a imagem da assinatura no banco, salvamos no mapa e deixamos um espaço vazio na tabela para a imagem entrar depois
         if (registroDia.assinatura && registroDia.assinatura.startsWith('data:image')) {
             assinaturasMap[dataPt] = registroDia.assinatura;
             textAssinatura = ' '; 
@@ -90,7 +89,6 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
 
         const minutosEsperados = converterParaMinutos(registroDia.cargaHorariaPrevista || jornadaPadrao.cargaHoraria);
 
-        // Regras de Faltas Inteligentes
         if (registroDia.statusDia === 'Falta') {
           status = 'FALTA';
           totalFaltas++;
@@ -131,7 +129,7 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
         }
       } else {
         if (diaSemana === 0) {
-          status = 'DSR (Domingo)';
+          status = 'DOMINGO';
         } else if (diaSemana === 6) {
           status = 'SÁBADO';
         } else {
@@ -141,7 +139,6 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
         }
       }
 
-      // Adiciona a linha na tabela (Lembre-se: o índice do dataPt é 0 e do textAssinatura é 6)
       tableData.push([ dataPt, entrada, saidaAlmoco, retorno, saidaFim, status, textAssinatura ]);
     }
 
@@ -159,34 +156,35 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
     docPdf.setFont("helvetica", "bold"); docPdf.text("Matrícula:", 18, 40); docPdf.setFont("helvetica", "normal"); docPdf.text(funcionarioAtual.matricula, 38, 40);
     docPdf.setFont("helvetica", "bold"); docPdf.text("Empresa:", 120, 34); docPdf.setFont("helvetica", "normal"); docPdf.text("CARVALHO PINTURA E MONTAGEM", 138, 34);
 
-    // ✍️ RENDERIZAÇÃO DA TABELA COM ASSINATURAS IMAGÉTICAS
+    const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
+
+    // 📏 AJUSTE DE LAYOUT: O segredo está no 'cellPadding: 1.5'. Ele garante que até 31 linhas caibam com folga!
     renderTable(docPdf, {
       startY: 48,
       head: [["Data", "Entrada", "Saída Alm.", "Retorno", "Saída Final", "Saldo / Status", "Assinatura"]],
       body: tableData,
       theme: 'grid',
-      styles: { fontSize: 7, cellPadding: 3, halign: 'center', textColor: 40 }, // Aumentei o cellPadding para 3 para a assinatura caber melhor
+      styles: { fontSize: 7, cellPadding: 1.5, halign: 'center', textColor: 40 }, 
       headStyles: { fillColor: azul, textColor: 255, fontSize: 7 },
       columnStyles: { 
         0: { cellWidth: 20, fontStyle: 'bold' }, 
         5: { halign: 'left', cellWidth: 35 }, 
-        6: { cellWidth: 25 } // Coluna mais larga para a imagem
+        6: { cellWidth: 25 } 
       },
       didParseCell: function(data: any) {
-        if (data.section === 'body' && (data.row.raw[5] === 'SÁBADO' || data.row.raw[5] === 'DOMINGO')) {
+        if (data.section === 'body' && (data.row.raw[5] === 'SÁBADO' || data.row.raw[5] === 'DSR (Domingo)')) {
           data.cell.styles.fillColor = [241, 245, 249];
         }
       },
-      // Aqui interceptamos o desenho para "colar" a imagem da assinatura
       didDrawCell: function(data: any) {
         if (data.section === 'body' && data.column.index === 6) {
-           const dataDaLinha = data.row.raw[0]; // Pega a data exata desta linha (ex: 14/08/2026)
-           const base64DaAssinatura = assinaturasMap[dataDaLinha]; // Procura se guardamos uma imagem para esta data
+           const dataDaLinha = data.row.raw[0]; 
+           const base64DaAssinatura = assinaturasMap[dataDaLinha]; 
            
            if (base64DaAssinatura) {
               try {
-                // Desenha a imagem dentro das coordenadas exatas da célula (x, y, largura, altura)
-                docPdf.addImage(base64DaAssinatura, 'PNG', data.cell.x + 2, data.cell.y + 1, 20, 5);
+                // 📏 AJUSTE DE LAYOUT: Altura da imagem ajustada para 4mm para caber na nova linha mais fina sem quebrar o layout
+                docPdf.addImage(base64DaAssinatura, 'PNG', data.cell.x + 2, data.cell.y + 0.5, 20, 4);
               } catch (e) {
                 console.error("Erro ao desenhar assinatura na data: " + dataDaLinha);
               }
@@ -196,6 +194,8 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
     });
 
     const finalY = (docPdf as any).lastAutoTable.finalY + 8;
+    
+    // 📏 AJUSTE DE LAYOUT: Caixa de resumo preservada, mas sem linhas extras de assinatura abaixo dela.
     docPdf.setFillColor(241, 245, 249);
     docPdf.rect(14, finalY, 182, 22, "F");
     
@@ -215,14 +215,7 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
     docPdf.text(formatarMinutosParaHoras(saldoTotalMesMinutos), 170, finalY + 13);
     docPdf.setTextColor(0);
 
-    const yAssinatura = 280; 
-    docPdf.setDrawColor(0); docPdf.setLineWidth(0.3);
-    docPdf.line(20, yAssinatura, 90, yAssinatura);
-    docPdf.line(110, yAssinatura, 180, yAssinatura);
-    
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(8);
-    docPdf.text("Assinatura do Gestor Responsável", 55, yAssinatura + 4, { align: 'center' });
-    docPdf.text(`Assinatura do Colaborador (${funcionarioAtual.nome.split(' ')[0]})`, 145, yAssinatura + 4, { align: 'center' });
+    // As linhas físicas de assinatura do rodapé foram completamente REMOVIDAS daqui!
 
     if (i < funcionarios.length - 1) {
       docPdf.addPage();

@@ -18,8 +18,11 @@ import ModalConfigPonto from '../components/ponto/ModalConfigPonto';
 import ModalEdicaoPonto from '../components/ponto/ModalEdicaoPonto';
 import ModalExportacaoPonto from '../components/ponto/ModalExportacaoPonto';
 
-const JORNADA_INICIAL = { entrada: '08:00', saidaAlmoco: '12:00', retornoAlmoco: '13:00', saidaFim: '17:48', limiteAtraso: '08:30', cargaHoraria: '08:48' };
-
+// Substitua apenas esta linha no topo do arquivo GestaoPonto.tsx
+const JORNADA_INICIAL = { 
+  entrada: '08:00', saidaAlmoco: '12:00', retornoAlmoco: '13:00', saidaFim: '17:48', limiteAtraso: '08:30', cargaHoraria: '08:48',
+  latOficial: '', lngOficial: '', latOficial2: '', lngOficial2: '', raioMetros: '50'
+};
 const converterParaMinutos = (horaStr?: string) => {
   if (!horaStr || horaStr === '--:--') return 0;
   const [h, m] = horaStr.substring(0, 5).split(':').map(Number);

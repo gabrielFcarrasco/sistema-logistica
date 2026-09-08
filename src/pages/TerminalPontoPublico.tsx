@@ -78,7 +78,6 @@ export default function TerminalPontoPublico() {
       setFuncionario(funcData);
 
     } catch (error: any) {
-      console.error("ERRO DO SISTEMA:", error);
       setErro('Erro ao carregar dados. Verifique sua internet ou tente novamente.');
       setFuncionario(null);
     }
@@ -96,22 +95,15 @@ export default function TerminalPontoPublico() {
       setRegistroHoje({}); 
     }
 
-    // Usando apenas um filtro no Firebase para evitar erros de índice
-    const qPendencias = query(
-      collection(dbFolha, 'registros_ponto'), 
-      where('funcionarioId', '==', funcionarioId) 
-    );
-    
+    const qPendencias = query(collection(dbFolha, 'registros_ponto'), where('funcionarioId', '==', funcionarioId));
     const snapPendencias = await getDocs(qPendencias);
     
-    // Filtragem local inteligente
     const pendentes = snapPendencias.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter((r: any) => {
         const dataAntiga = r.data < dataHojeStr;
         const semAssinatura = !r.assinatura;
         const temRegistroRelevante = r.entrada1 || r.statusDia;
-        
         return dataAntiga && semAssinatura && temRegistroRelevante;
       });
     
@@ -139,10 +131,10 @@ export default function TerminalPontoPublico() {
           setCarregandoGps(false);
           switch(err.code) {
             case err.PERMISSION_DENIED:
-              reject(new Error("Autorização negada. Por favor, permita o acesso à localização para bater o ponto."));
+              reject(new Error("Autorização negada. Permita o acesso à localização."));
               break;
             case err.POSITION_UNAVAILABLE:
-              reject(new Error("Sinal de GPS indisponível. Vá para um local mais aberto."));
+              reject(new Error("Sinal de GPS indisponível."));
               break;
             case err.TIMEOUT:
               reject(new Error("Demorou muito para encontrar o sinal. Tente novamente."));
@@ -181,11 +173,32 @@ export default function TerminalPontoPublico() {
       return;
     }
 
+    // 🧠 LÓGICA DE MÚLTIPLOS GALPÕES: Cálculo da distância para 2 locais
+    let distancia1 = Infinity;
+    let distancia2 = Infinity;
+    let temCercaConfigurada = false;
+
+    // Calcula para o Galpão 1
     if (configGlobal?.latOficial && configGlobal?.lngOficial) {
-      const distancia = calcularDistanciaMetros(localizacaoAtual.lat, localizacaoAtual.lng, Number(configGlobal.latOficial), Number(configGlobal.lngOficial));
-      const raioPermitido = Number(configGlobal.raioMetros) || 25;
-      if (distancia > raioPermitido) {
-        setErro(`Bloqueado! Você está a ${distancia} metros do setor. O máximo permitido é de ${raioPermitido}m.`);
+      distancia1 = calcularDistanciaMetros(localizacaoAtual.lat, localizacaoAtual.lng, Number(configGlobal.latOficial), Number(configGlobal.lngOficial));
+      temCercaConfigurada = true;
+    }
+
+    // Calcula para o Galpão 2
+    if (configGlobal?.latOficial2 && configGlobal?.lngOficial2) {
+      distancia2 = calcularDistanciaMetros(localizacaoAtual.lat, localizacaoAtual.lng, Number(configGlobal.latOficial2), Number(configGlobal.lngOficial2));
+      temCercaConfigurada = true;
+    }
+
+    const raioPermitido = Number(configGlobal?.raioMetros) || 50;
+
+    // Se existe pelo menos um galpão cadastrado, aplica a trava
+    if (temCercaConfigurada) {
+      // Se ele estiver longe do Galpão 1 E longe do Galpão 2, o sistema bloqueia
+      if (distancia1 > raioPermitido && distancia2 > raioPermitido) {
+        // Encontra o galpão mais próximo para exibir a mensagem correta
+        const maisProximo = Math.min(distancia1, distancia2);
+        setErro(`Bloqueado! Você está a ${maisProximo} metros do galpão mais próximo. O máximo permitido é de ${raioPermitido}m.`);
         return;
       }
     }
@@ -224,7 +237,7 @@ export default function TerminalPontoPublico() {
         diasPendentesAssinatura.forEach(dia => {
           batch.update(doc(dbFolha, 'registros_ponto', dia.id), {
             assinatura: base64,
-            observacaoSistema: 'Assinatura regularizada pelo terminal' // Removida a palavra universal do banco de dados
+            observacaoSistema: 'Assinatura regularizada pelo terminal'
           });
         });
         await batch.commit();
@@ -346,7 +359,6 @@ export default function TerminalPontoPublico() {
                   <FileSignature size={48} color="#d97706" style={{ margin: '0 auto 15px auto' }} />
                   <h3 style={{ margin: '0 0 10px 0', color: '#92400e', fontSize: '18px', fontWeight: '800' }}>Atenção, {funcionario.nome.split(' ')[0]}</h3>
                   
-                  {/* 📝 LISTA DE DATAS PENDENTES: Transparência total para o colaborador */}
                   <p style={{ margin: '0 0 10px 0', color: '#b45309', fontSize: '13px', lineHeight: '1.5' }}>
                     Você possui <strong>{diasPendentesAssinatura.length} dia(s)</strong> anterior(es) com pendência de assinatura. Confira as datas abaixo:
                   </p>
