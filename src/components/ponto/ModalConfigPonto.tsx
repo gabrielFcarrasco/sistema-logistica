@@ -21,7 +21,7 @@ const mapContainerStyle = { width: '100%', height: '300px', borderRadius: '12px'
 export default function ModalConfigPonto({ aberto, onClose, configEdit, setConfigEdit, salvarConfiguracao, isMobile }: Props) {
   // 🗺️ INTEGRAÇÃO GOOGLE MAPS: Carregamento do script oficial (Cole sua API KEY aqui)
   const { isLoaded } = useLoadScript({
-    googleMapsApiKey: "SUA_API_KEY_DO_GOOGLE_AQUI" 
+    googleMapsApiKey: "AIzaSyAadQhUNxS5dxQ78AHKgXBxSLXxAeFA-Ac" 
   });
 
   // Estado para controlar qual galpão estamos escolhendo no mapa no momento
