@@ -4,21 +4,12 @@ import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp
 import { db } from '../services/firebase'; 
 import { dbFolha } from '../services/firebaseFolha'; 
 
-import { Clock, Fingerprint, AlertCircle, CheckCircle2, User, LogOut, ChevronRight, MapPin, MapPinOff, RefreshCw, FileSignature, Navigation } from 'lucide-react';
+import { Clock, Fingerprint, AlertCircle, CheckCircle2, User, LogOut, ChevronRight, MapPin, MapPinOff, RefreshCw, FileSignature, Navigation, HelpCircle } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import ModalAssinaturaPonto from '../components/ponto/ModalAssinaturaPonto';
 
-// Matemática da Cerca Virtual (Raio da Terra)
-const calcularDistanciaMetros = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371e3; 
-  const rad = Math.PI / 180;
-  const dLat = (lat2 - lat1) * rad;
-  const dLon = (lon2 - lon1) * rad;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return Math.round(R * c);
-};
+// 🔓 ACESSO LIBERADO: A função de calcular distância matemática foi totalmente removida do topo do arquivo.
 
 export default function TerminalPontoPublico() {
   const [horaAtual, setHoraAtual] = useState(new Date());
@@ -26,7 +17,6 @@ export default function TerminalPontoPublico() {
   
   const [funcionario, setFuncionario] = useState<any>(null);
   const [registroHoje, setRegistroHoje] = useState<any>(null);
-  const [configGlobal, setConfigGlobal] = useState<any>(null); 
   const [erro, setErro] = useState('');
 
   const [modalAssinatura, setModalAssinatura] = useState(false);
@@ -38,21 +28,13 @@ export default function TerminalPontoPublico() {
   const [localizacaoAtual, setLocalizacaoAtual] = useState<{lat: number, lng: number} | null>(null);
   const [erroGpsVisual, setErroGpsVisual] = useState('');
   const [carregandoGps, setCarregandoGps] = useState(false);
+  const [tipoErroGps, setTipoErroGps] = useState<'permissao' | 'indisponivel' | null>(null);
 
   const [sucesso, setSucesso] = useState({ visivel: false, mensagem: '', horaExata: '' });
 
   useEffect(() => {
     const timer = setInterval(() => setHoraAtual(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const buscarConfiguracoes = async () => {
-      const docRef = doc(dbFolha, 'configuracoes', 'jornada_padrao');
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) setConfigGlobal(docSnap.data());
-    };
-    buscarConfiguracoes();
   }, []);
 
   const buscarFuncionario = async (e: React.FormEvent) => {
@@ -80,6 +62,7 @@ export default function TerminalPontoPublico() {
       
       setLocalizacaoAtual(null);
       setErroGpsVisual('');
+      setTipoErroGps(null);
 
     } catch (error: any) {
       setErro('Erro ao carregar dados. Verifique sua internet ou tente novamente.');
@@ -118,6 +101,7 @@ export default function TerminalPontoPublico() {
   const acionarGpsManual = () => {
     setCarregandoGps(true);
     setErroGpsVisual(''); 
+    setTipoErroGps(null);
     
     if (!navigator.geolocation) {
       setCarregandoGps(false);
@@ -125,17 +109,9 @@ export default function TerminalPontoPublico() {
       return;
     }
     
+    // 🔓 ACESSO LIBERADO: Tiramos a trava de precisão. O que o celular mandar, o sistema aceita!
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const margemDeErroMetros = position.coords.accuracy;
-
-        // 🎯 MENSAGEM AJUSTADA: Foco total em direcionar o funcionário a corrigir a configuração do celular dele
-        if (margemDeErroMetros > 80) {
-          setCarregandoGps(false);
-          setErroGpsVisual(`Sinal impreciso (Margem de erro: ${Math.round(margemDeErroMetros)}m). É obrigatório ativar a opção "Localização Exata" ou "Alta Precisão" nas configurações de GPS do seu celular para registrar o ponto.`);
-          return;
-        }
-
         setCarregandoGps(false);
         setLocalizacaoAtual({ lat: position.coords.latitude, lng: position.coords.longitude });
       },
@@ -143,20 +119,20 @@ export default function TerminalPontoPublico() {
         setCarregandoGps(false);
         switch(err.code) {
           case err.PERMISSION_DENIED:
-            setErroGpsVisual("Você bloqueou o acesso. Clique no cadeado na barra de endereços (ou configurações do celular) e permita a Localização.");
+            setTipoErroGps('permissao');
+            setErroGpsVisual("O seu navegador (Chrome/Safari) está bloqueando o acesso à localização.");
             break;
           case err.POSITION_UNAVAILABLE:
-            setErroGpsVisual("Sinal de GPS indisponível no momento. Tente novamente em alguns segundos.");
-            break;
           case err.TIMEOUT:
-            setErroGpsVisual("Demorou muito para encontrar o sinal do satélite. Tente novamente.");
+            setTipoErroGps('indisponivel');
+            setErroGpsVisual("Não foi possível encontrar o sinal do GPS do seu aparelho.");
             break;
           default:
             setErroGpsVisual("Erro desconhecido ao obter a localização.");
             break;
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } 
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 } 
     );
   };
 
@@ -164,33 +140,11 @@ export default function TerminalPontoPublico() {
     if (!funcionario) return;
 
     if (!localizacaoAtual) {
-      setErro("Você precisa capturar sua localização exata antes de continuar.");
+      setErro("Você precisa capturar sua localização antes de continuar.");
       return;
     }
 
-    let distancia1 = Infinity;
-    let distancia2 = Infinity;
-    let temCercaConfigurada = false;
-
-    if (configGlobal?.latOficial && configGlobal?.lngOficial) {
-      distancia1 = calcularDistanciaMetros(localizacaoAtual.lat, localizacaoAtual.lng, Number(configGlobal.latOficial), Number(configGlobal.lngOficial));
-      temCercaConfigurada = true;
-    }
-
-    if (configGlobal?.latOficial2 && configGlobal?.lngOficial2) {
-      distancia2 = calcularDistanciaMetros(localizacaoAtual.lat, localizacaoAtual.lng, Number(configGlobal.latOficial2), Number(configGlobal.lngOficial2));
-      temCercaConfigurada = true;
-    }
-
-    const raioPermitido = Number(configGlobal?.raioMetros) || 50;
-
-    if (temCercaConfigurada) {
-      if (distancia1 > raioPermitido && distancia2 > raioPermitido) {
-        const maisProximo = Math.min(distancia1, distancia2);
-        setErro(`Acesso Bloqueado! Você está a ${maisProximo} metros do galpão mais próximo. Aproxime-se (Máximo: ${raioPermitido}m).`);
-        return;
-      }
-    }
+    // 🔓 ACESSO LIBERADO: Toda a lógica de medir distância para o Galpão 1 e Galpão 2 foi apagada daqui.
 
     let qualPonto: 'entrada1' | 'saida1' | 'entrada2' | 'saida2' | null = null;
     if (!registroHoje?.entrada1) qualPonto = 'entrada1';
@@ -259,6 +213,7 @@ export default function TerminalPontoPublico() {
         ultimaAtualizacao: serverTimestamp()
       };
 
+      // 🗺️ AUDITORIA: Salva o link do mapa no banco para o RH conferir depois
       if (coords) dadosAtualizar[`${campoPonto}_local`] = `https://maps.google.com/?q=${coords.lat},${coords.lng}`;
       if (assinaturaBase64) dadosAtualizar.assinatura = assinaturaBase64;
 
@@ -304,7 +259,7 @@ export default function TerminalPontoPublico() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '15px 0' }}>
               <span style={{ fontSize: '56px', fontWeight: '900', letterSpacing: '-1px', lineHeight: '1', fontFamily: 'monospace', color: 'white' }}>{horaCompleta}</span>
             </div>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><MapPin size={14} /> Terminal Seguro c/ Geocerca</p>
+            <p style={{ margin: 0, color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><MapPin size={14} /> Terminal com Registro de GPS</p>
           </div>
         </div>
 
@@ -340,7 +295,7 @@ export default function TerminalPontoPublico() {
                     <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Matrícula: {funcionario.matricula}</p>
                   </div>
                 </div>
-                <button onClick={() => {setFuncionario(null); setMatricula(''); setErro(''); setLocalizacaoAtual(null); setErroGpsVisual(''); setDiasPendentesAssinatura([]);}} style={{ background: '#f1f5f9', border: 'none', color: '#64748b', padding: '8px', borderRadius: '50%', cursor: 'pointer', transition: 'background 0.2s' }} title="Sair"><LogOut size={18} /></button>
+                <button onClick={() => {setFuncionario(null); setMatricula(''); setErro(''); setLocalizacaoAtual(null); setErroGpsVisual(''); setDiasPendentesAssinatura([]); setTipoErroGps(null);}} style={{ background: '#f1f5f9', border: 'none', color: '#64748b', padding: '8px', borderRadius: '50%', cursor: 'pointer', transition: 'background 0.2s' }} title="Sair"><LogOut size={18} /></button>
               </div>
 
               {diasPendentesAssinatura.length > 0 ? (
@@ -353,7 +308,7 @@ export default function TerminalPontoPublico() {
                   </p>
                   
                   <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px', marginBottom: '15px', maxHeight: '100px', overflowY: 'auto', border: '1px solid #fde68a', textAlign: 'left' }}>
-                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#92400e', fontSize: '13px', lineHeight: '1.6' }}>
+                    <ul style={{ margin: '0', paddingLeft: '20px', color: '#92400e', fontSize: '13px', lineHeight: '1.6' }}>
                       {diasPendentesAssinatura.map((dia, idx) => (
                         <li key={idx}>
                           <strong>{dia.data.split('-').reverse().join('/')}</strong> 
@@ -389,10 +344,10 @@ export default function TerminalPontoPublico() {
                   {!registroHoje?.saida2 ? (
                     <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #cbd5e1', marginBottom: '15px' }}>
                       <h4 style={{ fontSize: '14px', color: '#0f172a', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MapPin size={18} color="#3b82f6" /> Localização Exata
+                        <MapPin size={18} color="#3b82f6" /> Localização
                       </h4>
                       <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 15px 0', lineHeight: '1.4' }}>
-                        Para registrar o seu ponto de forma segura, precisamos verificar se você está na área permitida do galpão.
+                        Precisamos salvar o local em que o seu registro foi feito.
                       </p>
 
                       {!localizacaoAtual ? (
@@ -402,13 +357,35 @@ export default function TerminalPontoPublico() {
                             disabled={carregandoGps}
                             style={{ width: '100%', height: '55px', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '12px', display: 'flex', justifyContent: 'center', gap: '8px' }}
                           >
-                            {carregandoGps ? <><RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }}/> Procurando Satélites...</> : <><Navigation size={18} /> Capturar Minha Localização</>}
+                            {carregandoGps ? <><RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }}/> Carregando Local...</> : <><Navigation size={18} /> Confirmar Local Atual</>}
                           </Button>
                           
                           {erroGpsVisual && (
-                            <div style={{ marginTop: '15px', padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#b91c1c', fontSize: '12px', display: 'flex', gap: '8px', alignItems: 'center', lineHeight: '1.4' }}>
-                              <MapPinOff size={18} style={{ flexShrink: 0 }} /> 
-                              <span>{erroGpsVisual}</span>
+                            <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', color: '#b91c1c', fontSize: '13px', display: 'flex', gap: '8px', alignItems: 'flex-start', lineHeight: '1.4', fontWeight: 'bold' }}>
+                                  <MapPinOff size={18} style={{ flexShrink: 0, marginTop: '2px' }} /> 
+                                  <span>{erroGpsVisual}</span>
+                                </div>
+
+                                {tipoErroGps === 'permissao' && (
+                                  <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '15px' }}>
+                                    <h5 style={{ margin: '0 0 8px 0', color: '#92400e', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><HelpCircle size={14}/> Como permitir a localização:</h5>
+                                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#b45309', fontSize: '12px', lineHeight: '1.6' }}>
+                                      <li><strong>No iPhone (Safari):</strong> Abra o app <strong>Ajustes</strong> &gt; Procure por <strong>Safari</strong> &gt; Role até <strong>Localização</strong> &gt; Marque <strong>"Permitir"</strong>.</li>
+                                      <li><strong>No Android (Chrome):</strong> Toque no ícone de <strong>Cadeado</strong> ou <strong>Configurações</strong> ao lado do endereço do site (lá em cima) &gt; Permissões &gt; Permitir Localização.</li>
+                                    </ul>
+                                  </div>
+                                )}
+                                
+                                {tipoErroGps === 'indisponivel' && (
+                                  <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '15px' }}>
+                                    <h5 style={{ margin: '0 0 8px 0', color: '#92400e', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><HelpCircle size={14}/> Como resolver:</h5>
+                                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#b45309', fontSize: '12px', lineHeight: '1.6' }}>
+                                      <li>Desligue e ligue o GPS (Localização) do seu celular.</li>
+                                      <li>Certifique-se de que o modo "Economia de Bateria" não desligou o seu GPS.</li>
+                                    </ul>
+                                  </div>
+                                )}
                             </div>
                           )}
                         </>
@@ -417,7 +394,7 @@ export default function TerminalPontoPublico() {
                           <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                             <iframe width="100%" height="120" style={{ border: 0, display: 'block' }} loading="lazy" src={`https://maps.google.com/maps?q=${localizacaoAtual.lat},${localizacaoAtual.lng}&z=16&output=embed`} />
                             <div style={{ padding: '6px', backgroundColor: '#dcfce7', fontSize: '11px', color: '#166534', textAlign: 'center', fontWeight: 'bold' }}>
-                              Localização capturada com precisão!
+                              Local salvo com sucesso!
                             </div>
                           </div>
                           

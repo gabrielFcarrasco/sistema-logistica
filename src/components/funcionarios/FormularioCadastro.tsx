@@ -20,6 +20,9 @@ export default function FormularioCadastro({ setores, avisar }: Props) {
   const [fotoBase64, setFotoBase64] = useState(''); 
   const [tamanhoUniforme, setTamanhoUniforme] = useState('');
   const [tamanhoCalcado, setTamanhoCalcado] = useState('');
+  // ✨ NOVO CAMPO: Data de Contratação (padrão é o dia atual)
+  const [dataContratacao, setDataContratacao] = useState(new Date().toISOString().split('T')[0]);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processarFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,16 +48,18 @@ export default function FormularioCadastro({ setores, avisar }: Props) {
 
   const cadastrarFuncionario = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nome || !matricula || !setorId) return avisar("Preencha Nome, Matrícula e Unidade.", "erro");
+    if (!nome || !matricula || !setorId || !dataContratacao) return avisar("Preencha Nome, Matrícula, Admissão e Unidade.", "erro");
     try {
       await addDoc(collection(db, 'funcionarios'), {
         nome, matricula, cpf, rg, setorId, fotoBase64,
+        dataContratacao, // Salvando a data no Firebase
         tamanhoUniforme: tamanhoUniforme || 'Não informado', tamanhoCalcado: tamanhoCalcado || 'Não informado', 
         status: 'ativo',
         createdAt: serverTimestamp()
       });
       avisar("Colaborador cadastrado!");
       setNome(''); setMatricula(''); setCpf(''); setRg(''); setTamanhoUniforme(''); setTamanhoCalcado(''); setFotoBase64('');
+      setDataContratacao(new Date().toISOString().split('T')[0]);
     } catch (error) { avisar("Erro ao cadastrar.", "erro"); }
   };
 
@@ -82,7 +87,7 @@ export default function FormularioCadastro({ setores, avisar }: Props) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px' }}>
           <Input label="CPF (Opcional)" value={cpf} onChange={e => setCpf(e.target.value)} placeholder="000.000.000-00" />
-          <Input label="RG (Opcional)" value={rg} onChange={e => setRg(e.target.value)} placeholder="00.000.000-X" />
+          <Input label="Data de Admissão *" type="date" value={dataContratacao} onChange={e => setDataContratacao(e.target.value)} />
         </div>
         <div>
           <label style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold' }}>Unidade de Trabalho *</label>
