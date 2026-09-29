@@ -15,6 +15,7 @@ import Estoque from './pages/Estoque';
 import PedidosCompra from './pages/PedidosCompra';
 import Advertencias from './pages/Advertencias';
 import GestaoAcessos from './pages/GestaoAcessos';
+import GestaoFinanceira from './pages/GestaoFinanceira';
 
 // ✨ NOVAS PÁGINAS DE PONTO
 import TerminalPontoPublico from './pages/TerminalPontoPublico';
@@ -50,8 +51,7 @@ export default function App() {
           <Route path="/pedidos-compra" element={<PedidosCompra />} />
           <Route path="/advertencias" element={<Advertencias />} />
           <Route path="/gestao-acessos" element={<GestaoAcessos />} />
-          
-          {/* ✨ ROTA PRIVADA DE GESTÃO DE PONTO */}
+          <Route path="/gestao-financeira" element={<GestaoFinanceira />} />
           <Route path="/gestao-ponto" element={<GestaoPonto />} />
         </Route>
 
