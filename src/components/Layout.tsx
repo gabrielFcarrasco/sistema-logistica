@@ -104,7 +104,7 @@ export default function Layout() {
           <li><Link to="/gestao-ponto" className={getMenuClass('/gestao-ponto')}><Clock size={18} color="#0ea5e9" style={{ marginRight: '12px' }} /> Gestão de Ponto</Link></li>
           
           {/* Nova opção adicionada aqui */}
-          <li><Link to="/financeiro" className={getMenuClass('/financeiro')}><Wallet size={18} color="#14b8a6" style={{ marginRight: '12px' }} /> Financeiro e Vales</Link></li>
+          <li><Link to="/gestao-financeira" className={getMenuClass('/gestao-financeira')}><Wallet size={18} color="#14b8a6" style={{ marginRight: '12px' }} /> Financeiro e Vales</Link></li>
           
           <li><Link to="/prestacao-servicos" className={getMenuClass('/prestacao-servicos')}><Paintbrush size={18} color="#f59e0b" style={{ marginRight: '12px' }} /> Operação / Produção</Link></li>
           <li><Link to="/orcamentos" className={getMenuClass('/orcamentos')}><FileSignature size={18} color="#f472b6" style={{ marginRight: '12px' }} /> Orçamentos</Link></li>
