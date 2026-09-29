@@ -3,9 +3,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, doc, setDoc, query, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase'; 
 import { dbFolha } from '../services/firebaseFolha'; 
-import { Wallet, Banknote, PlusCircle, Printer, ArrowRight, User, Bus, Route, Trash2 } from 'lucide-react';
+import { Wallet, Banknote, PlusCircle, ArrowRight, User, Bus, Route, Trash2, QrCode, FileText, Download } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+
+// Importações do motor de PDF que já tens no projeto
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // Motor de Cálculo de Dias Úteis
 const calcularDiasUteis = (mesAnoFiltro: string) => {
@@ -36,12 +40,11 @@ export default function GestaoFinanceira() {
 
   const diasUteisDoMes = useMemo(() => calcularDiasUteis(mesFiltro), [mesFiltro]);
 
-  // Estados dos Modais
+  // Estados dos Modais de Adiantamento e Transporte
   const [modalAdiantamento, setModalAdiantamento] = useState<{ visivel: boolean, funcId: string, nome: string }>({ visivel: false, funcId: '', nome: '' });
   const [valorAdiantamento, setValorAdiantamento] = useState('');
   const [motivoAdiantamento, setMotivoAdiantamento] = useState('');
 
-  // 🚀 NOVO: Estado do Modal de Construtor de Rotas de Transporte
   const [modalTransporte, setModalTransporte] = useState<{ visivel: boolean, funcId: string, nome: string, rotas: any[] }>({ visivel: false, funcId: '', nome: '', rotas: [] });
 
   useEffect(() => {
@@ -68,7 +71,14 @@ export default function GestaoFinanceira() {
     carregarFinancas();
   }, [mesFiltro]);
 
-  // 🚀 LÓGICA DO CONSTRUTOR DE ROTAS
+  // Lógica de Chave PIX
+  const salvarChavePix = async (funcId: string, chave: string) => {
+    const idDoc = `${funcId}_${mesFiltro}`;
+    await setDoc(doc(dbFolha, 'financeiro_mes', idDoc), { chavePix: chave }, { merge: true });
+    setDadosFinanceiros(prev => ({ ...prev, [funcId]: { ...prev[funcId], chavePix: chave } }));
+  };
+
+  // Lógica do Construtor de Rotas
   const abrirModalTransporte = (funcId: string, nome: string) => {
     const rotasAtuais = dadosFinanceiros[funcId]?.transportes || [];
     setModalTransporte({ visivel: true, funcId, nome, rotas: [...rotasAtuais] });
@@ -85,8 +95,7 @@ export default function GestaoFinanceira() {
 
   const atualizarLinhaRota = (idLinha: string, campo: string, valor: any) => {
     setModalTransporte(prev => ({
-      ...prev,
-      rotas: prev.rotas.map(r => r.id === idLinha ? { ...r, [campo]: valor } : r)
+      ...prev, rotas: prev.rotas.map(r => r.id === idLinha ? { ...r, [campo]: valor } : r)
     }));
   };
 
@@ -94,47 +103,39 @@ export default function GestaoFinanceira() {
     const { funcId, nome, rotas } = modalTransporte;
     const idDoc = `${funcId}_${mesFiltro}`;
     
-    // Calcula o valor total diário baseado nas rotas inseridas
     let totalDiario = 0;
     rotas.forEach(rota => {
       const valor = parseFloat(rota.valor) || 0;
       const qtd = parseInt(rota.qtdDiaria) || 0;
       totalDiario += (valor * qtd);
     });
-
-    // Multiplica o total diário pelos dias úteis para ter o valor mensal
     const valorMensalTotal = totalDiario * diasUteisDoMes;
 
     await setDoc(doc(dbFolha, 'financeiro_mes', idDoc), {
-      funcionarioId: funcId,
-      nomeFuncionario: nome,
-      mesReferencia: mesFiltro,
-      transportes: rotas, // Guarda o array detalhado
-      valorPassagemDiario: totalDiario,
-      valorPassagem: valorMensalTotal // Guarda o total final
+      funcionarioId: funcId, nomeFuncionario: nome, mesReferencia: mesFiltro,
+      transportes: rotas, valorPassagemDiario: totalDiario, valorPassagem: valorMensalTotal
     }, { merge: true });
 
     setDadosFinanceiros(prev => ({
-      ...prev,
-      [funcId]: { 
-        ...prev[funcId], 
-        transportes: rotas,
-        valorPassagemDiario: totalDiario,
-        valorPassagem: valorMensalTotal 
-      }
+      ...prev, [funcId]: { ...prev[funcId], transportes: rotas, valorPassagemDiario: totalDiario, valorPassagem: valorMensalTotal }
     }));
-
     setModalTransporte({ visivel: false, funcId: '', nome: '', rotas: [] });
   };
 
-  // Lógica de Adiantamentos (Mantida igual)
+  // 🚀 NOVO: Adicionar Adiantamento com Suporte a Atualização
   const salvarAdiantamento = async () => {
     if (!valorAdiantamento) return;
     const { funcId, nome } = modalAdiantamento;
     const idDoc = `${funcId}_${mesFiltro}`;
     const valor = parseFloat(valorAdiantamento) || 0;
     
-    const novoAdiantamento = { id: Date.now().toString(), data: new Date().toLocaleDateString('pt-BR'), valor: valor, motivo: motivoAdiantamento || 'Adiantamento / Vale' };
+    const novoAdiantamento = { 
+      id: Date.now().toString(), 
+      data: new Date().toLocaleDateString('pt-BR'), 
+      valor: valor, 
+      motivo: motivoAdiantamento || 'Adiantamento / Vale' 
+    };
+
     const dadosAtuais = dadosFinanceiros[funcId] || {};
     const adiantamentosAtuais = dadosAtuais.adiantamentos || [];
     const novaLista = [...adiantamentosAtuais, novoAdiantamento];
@@ -148,28 +149,156 @@ export default function GestaoFinanceira() {
     setValorAdiantamento(''); setMotivoAdiantamento('');
   };
 
+  // 🚀 NOVO: Sistema para Excluir um Adiantamento Específico
+  const excluirAdiantamento = async (funcId: string, idAdiantamento: string) => {
+    const idDoc = `${funcId}_${mesFiltro}`;
+    const dadosAtuais = dadosFinanceiros[funcId] || {};
+    const adiantamentosAtuais = dadosAtuais.adiantamentos || [];
+    const novaLista = adiantamentosAtuais.filter((ad: any) => ad.id !== idAdiantamento);
+
+    await setDoc(doc(dbFolha, 'financeiro_mes', idDoc), {
+      adiantamentos: novaLista
+    }, { merge: true });
+
+    setDadosFinanceiros(prev => ({
+      ...prev,
+      [funcId]: { ...prev[funcId], adiantamentos: novaLista }
+    }));
+  };
+
+  // 🚀 NOVO: Geração de PDF 1 (Transporte e PIX) usando jsPDF + autotable
+  const exportarPdfPixTransporte = () => {
+    const docPdf = new jsPDF('p', 'mm', 'a4');
+    const azul = [30, 41, 59];
+
+    docPdf.setFont("helvetica", "bold");
+    docPdf.setFontSize(14);
+    docPdf.setTextColor(azul[0], azul[1], azul[2]);
+    docPdf.text("RELATÓRIO DE TRANSPORTE E CHAVES PIX", 105, 15, { align: 'center' });
+    
+    docPdf.setFontSize(10);
+    docPdf.setTextColor(100);
+    docPdf.text(`Mês de Referência: ${mesFiltro.split('-').reverse().join('/')} | Dias Úteis: ${diasUteisDoMes}`, 105, 22, { align: 'center' });
+
+    const corpoTabela: any[] = [];
+    let valorTotalGeral = 0;
+
+    funcionarios.forEach(func => {
+      const dados = dadosFinanceiros[func.id] || {};
+      const totalPass = dados.valorPassagem || 0;
+      if (totalPass > 0) {
+        valorTotalGeral += totalPass;
+        corpoTabela.push([
+          func.nome.toUpperCase(),
+          dados.chavePix || 'Não informada',
+          diasUteisDoMes.toString(),
+          `R$ ${totalPass.toFixed(2)}`
+        ]);
+      }
+    });
+
+    (docPdf as any).autoTable({
+      startY: 30,
+      head: [["Colaborador", "Chave PIX", "Dias Úteis", "Valor a Pagar (VT)"]],
+      body: corpoTabela,
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 3, halign: 'center' },
+      headStyles: { fillColor: azul, textColor: 255 },
+      columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' }, 3: { fontStyle: 'bold', textColor: [22, 101, 52] } }
+    });
+
+    const finalY = (docPdf as any).lastAutoTable.finalY + 10;
+    docPdf.setFont("helvetica", "bold");
+    docPdf.setFontSize(11);
+    docPdf.setTextColor(0);
+    docPdf.text(`TOTAL GERAL DE TRANSPORTE: R$ ${valorTotalGeral.toFixed(2)}`, 14, finalY);
+
+    docPdf.save(`Relatorio_Transporte_PIX_${mesFiltro}.pdf`);
+  };
+
+  // 🚀 NOVO: Geração de PDF 2 (Vales para Contabilidade) usando jsPDF + autotable
+  const exportarPdfValesEscritorio = () => {
+    const docPdf = new jsPDF('p', 'mm', 'a4');
+    const vermelho = [185, 28, 28];
+
+    docPdf.setFont("helvetica", "bold");
+    docPdf.setFontSize(14);
+    docPdf.setTextColor(vermelho[0], vermelho[1], vermelho[2]);
+    docPdf.text("RELATÓRIO DE VALES PARA DESCONTO EM FOLHA", 105, 15, { align: 'center' });
+    
+    docPdf.setFontSize(10);
+    docPdf.setTextColor(100);
+    docPdf.text(`Competência: ${mesFiltro.split('-').reverse().join('/')}`, 105, 22, { align: 'center' });
+
+    const corpoTabela: any[] = [];
+    let totalGeralVales = 0;
+
+    funcionarios.forEach(func => {
+      const dados = dadosFinanceiros[func.id] || {};
+      const adiantamentos = dados.adiantamentos || [];
+      const totalFunc = adiantamentos.reduce((acc: number, curr: any) => acc + curr.valor, 0);
+
+      if (totalFunc > 0) {
+        totalGeralVales += totalFunc;
+        const descricaoVales = adiantamentos.map((ad: any) => `• [${ad.data}] ${ad.motivo}: R$ ${ad.valor.toFixed(2)}`).join('\n');
+        
+        corpoTabela.push([
+          func.nome.toUpperCase(),
+          descricaoVales,
+          `R$ ${totalFunc.toFixed(2)}`
+        ]);
+      }
+    });
+
+    (docPdf as any).autoTable({
+      startY: 30,
+      head: [["Colaborador", "Discriminação dos Adiantamentos", "Total a Descontar"]],
+      body: corpoTabela,
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 4, valign: 'middle' },
+      headStyles: { fillColor: vermelho, textColor: 255 },
+      columnStyles: { 0: { fontStyle: 'bold' }, 2: { halign: 'right', fontStyle: 'bold', textColor: vermelho } }
+    });
+
+    const finalY = (docPdf as any).lastAutoTable.finalY + 10;
+    docPdf.setFont("helvetica", "bold");
+    docPdf.setFontSize(11);
+    docPdf.setTextColor(0);
+    docPdf.text(`TOTAL GERAL DE VALES A DESCONTAR: R$ ${totalGeralVales.toFixed(2)}`, 14, finalY);
+
+    docPdf.save(`Relatorio_Vales_Contabilidade_${mesFiltro}.pdf`);
+  };
+
   const funcionariosFiltrados = funcionarios.filter(f => f.nome.toLowerCase().includes(termoBusca.toLowerCase()));
-  const imprimirRelatorio = () => window.print();
 
   return (
     <div style={{ padding: '30px', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'system-ui' }}>
       <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
         
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }} className="no-print">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <div style={{ backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '16px' }}><Wallet size={30} color="#16a34a" /></div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: '24px', color: '#0f172a' }}>Gestão Financeira e Vales</h1>
-              <p style={{ margin: 0, color: '#64748b' }}>Cálculo de Rotas de Transporte e Caixinha da Empresa</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <div style={{ backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '16px' }}><Wallet size={30} color="#16a34a" /></div>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '24px', color: '#0f172a' }}>Gestão Financeira e Vales</h1>
+                <p style={{ margin: 0, color: '#64748b' }}>Cálculo de Rotas de Transporte e Caixinha da Empresa</p>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'white', padding: '8px 15px', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Dias Úteis: <span style={{ color: '#0ea5e9', fontSize: '15px' }}>{diasUteisDoMes}</span></span>
+                <input type="month" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} style={{ border: 'none', outline: 'none', fontWeight: 'bold' }} />
             </div>
           </div>
-          
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'white', padding: '8px 15px', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
-               <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Dias Úteis: <span style={{ color: '#0ea5e9', fontSize: '15px' }}>{diasUteisDoMes}</span></span>
-               <input type="month" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} style={{ border: 'none', outline: 'none', fontWeight: 'bold' }} />
-            </div>
-            <Button onClick={imprimirRelatorio} style={{ backgroundColor: '#0f172a', display: 'flex', gap: '8px' }}><Printer size={18}/> Relatório</Button>
+
+          {/* Botões de Exportação PDF */}
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <Button onClick={exportarPdfPixTransporte} style={{ backgroundColor: '#0f172a', display: 'flex', gap: '8px' }}>
+              <Download size={18}/> PDF - PIX e Transporte
+            </Button>
+            <Button onClick={exportarPdfValesEscritorio} style={{ backgroundColor: '#b91c1c', display: 'flex', gap: '8px' }}>
+              <Download size={18}/> PDF - Vales Contabilidade
+            </Button>
           </div>
         </div>
 
@@ -178,8 +307,6 @@ export default function GestaoFinanceira() {
             const dadosFunc = dadosFinanceiros[func.id] || {};
             const adiantamentos = dadosFunc.adiantamentos || [];
             const totalAdiantado = adiantamentos.reduce((acc: number, curr: any) => acc + curr.valor, 0);
-
-            // Valores de transporte atuais
             const rotasFunc = dadosFunc.transportes || [];
             const totalPassagemDiario = dadosFunc.valorPassagemDiario || 0;
             const totalPassagemCalculado = dadosFunc.valorPassagem || 0;
@@ -187,16 +314,29 @@ export default function GestaoFinanceira() {
             return (
               <div key={func.id} style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' }}>
-                  <div style={{ width: '40px', height: '40px', backgroundColor: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={20} color="#475569" /></div>
-                  <strong style={{ fontSize: '18px', color: '#1e293b' }}>{func.nome}</strong>
+                {/* CABEÇALHO COM CHAVE PIX */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', backgroundColor: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={20} color="#475569" /></div>
+                    <strong style={{ fontSize: '18px', color: '#1e293b' }}>{func.nome}</strong>
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                    <QrCode size={16} color="#64748b" />
+                    <input 
+                      type="text" 
+                      placeholder="Chave PIX..." 
+                      defaultValue={dadosFunc.chavePix || ''}
+                      onBlur={(e) => salvarChavePix(func.id, e.target.value)}
+                      style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '200px' }}
+                    />
+                  </div>
                 </div>
 
-                {/* 🚌 PAINEL DE TRANSPORTE (VISÃO LIMPA) */}
-                <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px dashed #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="no-print">
+                {/* PAINEL DE TRANSPORTE */}
+                <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px dashed #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                   <div>
                     <h4 style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase' }}><Bus size={14}/> Vale Transporte</h4>
-                    
                     {rotasFunc.length > 0 ? (
                       <p style={{ margin: 0, fontSize: '13px', color: '#334155' }}>
                         Custo Diário: <strong>R$ {totalPassagemDiario.toFixed(2)}</strong> | Previsto no Mês ({diasUteisDoMes} dias): <strong style={{ color: '#0ea5e9', fontSize: '15px' }}>R$ {totalPassagemCalculado.toFixed(2)}</strong>
@@ -205,29 +345,16 @@ export default function GestaoFinanceira() {
                       <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>Nenhuma rota configurada.</p>
                     )}
                   </div>
-
                   <Button onClick={() => abrirModalTransporte(func.id, func.nome)} style={{ backgroundColor: 'white', color: '#0f172a', border: '1px solid #cbd5e1', fontSize: '13px', height: '40px', gap: '8px' }}>
                     <Route size={16} /> Configurar Rotas
                   </Button>
                 </div>
-                
-                {/* Visão limpa para a Contabilidade (Print) */}
-                <div className="print-only" style={{ display: 'none', borderBottom: '1px dashed #cbd5e1', paddingBottom: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Vale Transporte (Mês)</span>
-                    <strong>R$ {totalPassagemCalculado.toFixed(2)}</strong>
-                  </div>
-                </div>
 
-                {/* CAIXINHA / ADIANTAMENTOS */}
+                {/* CAIXINHA / ADIANTAMENTOS COM OPÇÃO DE EXCLUIR */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                     <h4 style={{ margin: 0, fontSize: '14px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}><Banknote size={16} /> Adiantamentos (Caixinha)</h4>
-                    <button 
-                      onClick={() => setModalAdiantamento({ visivel: true, funcId: func.id, nome: func.nome })}
-                      className="no-print"
-                      style={{ backgroundColor: '#eff6ff', color: '#3b82f6', border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
+                    <button onClick={() => setModalAdiantamento({ visivel: true, funcId: func.id, nome: func.nome })} style={{ backgroundColor: '#eff6ff', color: '#3b82f6', border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <PlusCircle size={14} /> Novo Vale
                     </button>
                   </div>
@@ -235,9 +362,15 @@ export default function GestaoFinanceira() {
                   {adiantamentos.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {adiantamentos.map((ad: any) => (
-                        <div key={ad.id} style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#fef2f2', padding: '10px 15px', borderRadius: '8px', fontSize: '13px', border: '1px solid #fee2e2' }}>
+                        <div key={ad.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fef2f2', padding: '10px 15px', borderRadius: '8px', fontSize: '13px', border: '1px solid #fee2e2' }}>
                           <span style={{ color: '#991b1b' }}>{ad.data} - {ad.motivo}</span>
-                          <strong style={{ color: '#b91c1c' }}>R$ {ad.valor.toFixed(2)}</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            <strong style={{ color: '#b91c1c' }}>R$ {ad.valor.toFixed(2)}</strong>
+                            {/* Botão para excluir o adiantamento errado */}
+                            <button onClick={() => excluirAdiantamento(func.id, ad.id)} title="Excluir este vale" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}>
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </div>
                       ))}
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 15px', borderTop: '2px solid #e2e8f0', marginTop: '5px' }}>
@@ -255,11 +388,10 @@ export default function GestaoFinanceira() {
         </div>
       </div>
 
-      {/* 🚀 MODAL DO CONSTRUTOR DE ROTAS DE TRANSPORTE */}
+      {/* MODAL DO CONSTRUTOR DE ROTAS */}
       {modalTransporte.visivel && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px', backdropFilter: 'blur(3px)' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', animation: 'fadeIn 0.3s' }}>
-            
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                <div style={{ backgroundColor: '#e0f2fe', padding: '10px', borderRadius: '50%' }}><Route size={24} color="#0284c7" /></div>
                <div>
@@ -269,40 +401,22 @@ export default function GestaoFinanceira() {
             </div>
 
             <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '15px', marginBottom: '20px' }}>
-               <p style={{ margin: '0 0 15px 0', fontSize: '13px', color: '#475569' }}>Adicione todas as conduções que o colaborador pega **num único dia**. Por exemplo: se ele pega 1 ônibus para ir e 1 trem, mas só paga o ônibus na volta, deves adicionar Ônibus (2x) e Trem (1x).</p>
-               
                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {modalTransporte.rotas.map((rota, index) => (
+                  {modalTransporte.rotas.map(rota => (
                     <div key={rota.id} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                       <input 
-                         type="text" placeholder="Nome (Ex: Ônibus)" value={rota.nomeConducao} 
-                         onChange={e => atualizarLinhaRota(rota.id, 'nomeConducao', e.target.value)}
-                         style={{ flex: 2, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                       />
-                       <input 
-                         type="number" placeholder="Valor (R$)" value={rota.valor} 
-                         onChange={e => atualizarLinhaRota(rota.id, 'valor', e.target.value)}
-                         style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                       />
-                       <select 
-                         value={rota.qtdDiaria} onChange={e => atualizarLinhaRota(rota.id, 'qtdDiaria', parseInt(e.target.value))}
-                         style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                       >
+                       <input type="text" placeholder="Nome (Ex: Ônibus)" value={rota.nomeConducao} onChange={e => atualizarLinhaRota(rota.id, 'nomeConducao', e.target.value)} style={{ flex: 2, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                       <input type="number" placeholder="Valor (R$)" value={rota.valor} onChange={e => atualizarLinhaRota(rota.id, 'valor', e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                       <select value={rota.qtdDiaria} onChange={e => atualizarLinhaRota(rota.id, 'qtdDiaria', parseInt(e.target.value))} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                           <option value={1}>1x ao dia</option>
                           <option value={2}>2x ao dia</option>
                           <option value={3}>3x ao dia</option>
                           <option value={4}>4x ao dia</option>
                        </select>
-                       <button onClick={() => removerLinhaRota(rota.id)} style={{ backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '8px', cursor: 'pointer', display: 'flex' }}>
-                          <Trash2 size={18} />
-                       </button>
+                       <button onClick={() => removerLinhaRota(rota.id)} style={{ backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', padding: '10px', borderRadius: '8px', cursor: 'pointer' }}><Trash2 size={18} /></button>
                     </div>
                   ))}
                </div>
-
-               <Button onClick={adicionarLinhaRota} style={{ marginTop: '15px', backgroundColor: 'white', color: '#3b82f6', border: '1px dashed #3b82f6', width: '100%', display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                 <PlusCircle size={16} /> Adicionar Nova Condução
-               </Button>
+               <Button onClick={adicionarLinhaRota} style={{ marginTop: '15px', backgroundColor: 'white', color: '#3b82f6', border: '1px dashed #3b82f6', width: '100%', display: 'flex', justifyContent: 'center', gap: '8px' }}><PlusCircle size={16} /> Adicionar Nova Condução</Button>
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -313,7 +427,7 @@ export default function GestaoFinanceira() {
         </div>
       )}
 
-      {/* MODAL DE ADIANTAMENTO (CAIXINHA) */}
+      {/* MODAL DE ADIANTAMENTO */}
       {modalAdiantamento.visivel && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(3px)' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '400px', animation: 'fadeIn 0.3s' }}>
@@ -333,15 +447,8 @@ export default function GestaoFinanceira() {
         </div>
       )}
 
-      {/* ESTILOS PARA IMPRESSÃO DO RELATÓRIO PARA A CONTABILIDADE */}
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @media print {
-          .no-print { display: none !important; }
-          .print-only { display: block !important; }
-          body { background-color: white; }
-          div { box-shadow: none !important; border-color: #cbd5e1 !important; }
-        }
       `}</style>
     </div>
   );
