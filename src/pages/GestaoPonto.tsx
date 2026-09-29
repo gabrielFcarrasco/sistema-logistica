@@ -6,9 +6,10 @@ import { dbFolha } from '../services/firebaseFolha';
 
 import { 
   Clock, Settings, CalendarDays, FileSpreadsheet, Search, CheckCircle2, AlertCircle, ExternalLink, CalendarX2,
-  Scale, TrendingUp, TrendingDown, AlertTriangle
+  TrendingUp, TrendingDown, AlertTriangle, UserX, CalendarPlus, Plane
 } from 'lucide-react';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 
 import DashboardEstatisticas from '../components/ponto/DashboardEstatisticas';
 import CartaoColaborador from '../components/ponto/CartaoColaborador';
@@ -21,19 +22,8 @@ const JORNADA_INICIAL = {
   latOficial: '', lngOficial: '', latOficial2: '', lngOficial2: '', raioMetros: '50'
 };
 
-// 📅 DATAS E FERIADOS: Lista de Feriados Fixos (Nacionais + SP Estadual + SP Municipal)
 const FERIADOS_SP = [
-  '01-01', // Confraternização Universal
-  '01-25', // Aniversário de São Paulo (Municipal)
-  '04-21', // Tiradentes
-  '05-01', // Dia do Trabalhador
-  '07-09', // Revolução Constitucionalista (Estadual SP)
-  '09-07', // Independência do Brasil
-  '10-12', // Nossa Senhora Aparecida
-  '11-02', // Finados
-  '11-15', // Proclamação da República
-  '11-20', // Dia da Consciência Negra (Estadual SP)
-  '12-25'  // Natal
+  '01-01', '01-25', '04-21', '05-01', '07-09', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'
 ];
 
 const converterParaMinutos = (horaStr?: string) => {
@@ -46,8 +36,7 @@ const formatarMinutosParaHoras = (totalMinutos: number) => {
   if (totalMinutos === 0) return '00:00';
   const horas = Math.floor(Math.abs(totalMinutos) / 60);
   const mins = Math.abs(totalMinutos) % 60;
-  const sinal = totalMinutos > 0 ? '+' : '-';
-  return `${sinal}${String(horas).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  return `${String(horas).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 };
 
 export default function GestaoPonto() {
@@ -83,12 +72,17 @@ export default function GestaoPonto() {
   const [exportando, setExportando] = useState(false);
 
   const [notificacao, setNotificacao] = useState<{msg: string, tipo: 'sucesso' | 'erro'} | null>(null);
-  const [dialogoConfirmacao, setDialogoConfirmacao] = useState<{visivel: boolean, titulo: string, mensagem: string, acaoConfirmar: () => void} | null>(null);
 
-  // 📅 DATAS E FERIADOS: Verificadores de Calendário
+  // 🚀 ESTADOS DO MODAL DE FÉRIAS / AFASTAMENTO EM LOTE
+  const [modalLoteAberto, setModalLoteAberto] = useState(false);
+  const [loteFuncId, setLoteFuncId] = useState('');
+  const [loteTipo, setLoteTipo] = useState('Férias');
+  const [loteInicio, setLoteInicio] = useState(hojeString);
+  const [loteFim, setLoteFim] = useState(hojeString);
+
   const dataObjetoFiltro = new Date(`${dataFiltro}T12:00:00`);
   const isFimDeSemana = dataObjetoFiltro.getDay() === 0 || dataObjetoFiltro.getDay() === 6;
-  const mesDiaFiltro = dataFiltro.substring(5); // Extrai apenas "MM-DD"
+  const mesDiaFiltro = dataFiltro.substring(5);
   const isFeriado = FERIADOS_SP.includes(mesDiaFiltro);
   const isDiaInativo = isFimDeSemana || isFeriado; 
 
@@ -97,15 +91,8 @@ export default function GestaoPonto() {
     setTimeout(() => setNotificacao(null), 4000); 
   };
 
-  const formatarHoraLimpa = (hora?: string) => {
-    if (!hora || hora === '--:--') return '--:--';
-    return hora.substring(0, 5);
-  };
-
-  const extrairParaInput = (hora?: string) => {
-    if (!hora || hora === '--:--') return '';
-    return hora.substring(0, 5);
-  };
+  const formatarHoraLimpa = (hora?: string) => hora && hora !== '--:--' ? hora.substring(0, 5) : '--:--';
+  const extrairParaInput = (hora?: string) => hora && hora !== '--:--' ? hora.substring(0, 5) : '';
 
   useEffect(() => {
     const buscarConfiguracoes = async () => {
@@ -116,90 +103,103 @@ export default function GestaoPonto() {
           setJornadaPadrao(docSnap.data() as any);
           setConfigEdit(docSnap.data() as any);
         }
-      } catch (e) { console.error("Erro ao buscar configurações."); }
+      } catch (e) { console.error("Erro."); }
     };
     buscarConfiguracoes();
-  }, []);
-
-  useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const timer = setInterval(() => setHoraAtualTexto(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })), 60000);
+    return () => { window.removeEventListener('resize', handleResize); clearInterval(timer); };
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => { setHoraAtualTexto(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); }, 60000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'funcionarios'), (snap) => {
-      setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((f: any) => f.status !== 'desligado'));
-    });
+    const unsub = onSnapshot(collection(db, 'funcionarios'), (snap) => setFuncionarios(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((f: any) => f.status !== 'desligado')));
     return () => unsub();
   }, []);
 
   useEffect(() => {
     setCarregando(true);
-    const q = query(collection(dbFolha, 'registros_ponto'), where('data', '==', dataFiltro));
-    const unsub = onSnapshot(q, (snap) => {
-      setRegistrosHoje(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setCarregando(false);
+    const unsub = onSnapshot(query(collection(dbFolha, 'registros_ponto'), where('data', '==', dataFiltro)), (snap) => {
+      setRegistrosHoje(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setCarregando(false);
     });
     return () => unsub();
   }, [dataFiltro]);
 
   useEffect(() => {
     const mesAtual = dataFiltro.substring(0, 7);
-    const inicioMes = `${mesAtual}-01`;
-    const fimMes = `${mesAtual}-31`;
-    const q = query(collection(dbFolha, 'registros_ponto'), where('data', '>=', inicioMes), where('data', '<=', fimMes));
-    const unsub = onSnapshot(q, (snap) => { setRegistrosMes(snap.docs.map(d => d.data())); });
+    const unsub = onSnapshot(query(collection(dbFolha, 'registros_ponto'), where('data', '>=', `${mesAtual}-01`), where('data', '<=', `${mesAtual}-31`)), (snap) => {
+      setRegistrosMes(snap.docs.map(d => d.data()));
+    });
     return () => unsub();
   }, [dataFiltro]);
 
   useEffect(() => {
     const unsub = onSnapshot(query(collection(db, 'acordos_colaboradores')), (snap) => {
-      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAcordosHoje(lista.filter((a: any) => a.createdAt && a.createdAt.toDate().toISOString().split('T')[0] === dataFiltro));
+      setAcordosHoje(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((a: any) => a.createdAt && a.createdAt.toDate().toISOString().split('T')[0] === dataFiltro));
     });
     return () => unsub();
   }, [dataFiltro]);
 
-  // 🛡️ ESCUDO DE ABONOS: Aceita qualquer texto justificado, incluindo 'Comprovante de Horas' e 'Acordo'
+  // Função herdada para quando se clica num botão de falta rápida no cartão
   const lancarAusencia = (funcId: string, funcNome: string, tipo: string) => {
-    setDialogoConfirmacao({
-      visivel: true,
-      titulo: `Lançar Justificativa`,
-      mensagem: `Deseja realmente lançar "${tipo}" para ${funcNome} no dia ${dataFiltro.split('-').reverse().join('/')}?`,
-      acaoConfirmar: async () => {
-        let assinaturaAutomatica = null;
-        if (tipo !== 'Falta') {
-          assinaturaAutomatica = `Sistema: Abonado pelo RH (${tipo})`;
-        }
+    setLoteFuncId(funcId);
+    setLoteTipo(tipo);
+    setLoteInicio(dataFiltro);
+    setLoteFim(dataFiltro);
+    setModalLoteAberto(true);
+  };
 
-        try {
-          const dadosSalvar: any = {
-            funcionarioId: funcId, nomeFuncionario: funcNome, data: dataFiltro, statusDia: tipo, justificativa: tipo,
-            entrada1: '--:--', saida1: '--:--', entrada2: '--:--', saida2: '--:--', ultimaAtualizacao: serverTimestamp()
-          };
-          if (assinaturaAutomatica) dadosSalvar.assinatura = assinaturaAutomatica;
+  // 🚀 O MOTOR DE FÉRIAS E ATESTADOS EM LOTE
+  const processarLancamentoLote = async () => {
+    if (!loteFuncId) return mostrarAviso("Selecione um colaborador.", "erro");
+    if (loteInicio > loteFim) return mostrarAviso("A data de início não pode ser superior à data de fim.", "erro");
 
-          await setDoc(doc(dbFolha, 'registros_ponto', `${funcId}_${dataFiltro}`), dadosSalvar, { merge: true });
-          mostrarAviso(`${tipo} lançada com sucesso!`, 'sucesso');
-        } catch (error) { 
-          mostrarAviso(`Erro ao lançar ${tipo}.`, 'erro'); 
-        }
+    const func = funcionarios.find(f => f.id === loteFuncId);
+    if (!func) return;
+
+    try {
+      let dataAtual = new Date(`${loteInicio}T12:00:00`);
+      const dataFinal = new Date(`${loteFim}T12:00:00`);
+
+      // Assinatura automática do RH
+      let assinaturaAutomatica = loteTipo !== 'Falta' ? `Sistema: Registo em Lote RH (${loteTipo})` : null;
+
+      while (dataAtual <= dataFinal) {
+        const diaISO = dataAtual.toISOString().split('T')[0];
+        
+        const dadosSalvar: any = {
+          funcionarioId: func.id, nomeFuncionario: func.nome, data: diaISO, 
+          statusDia: loteTipo, justificativa: loteTipo,
+          entrada1: '--:--', saida1: '--:--', entrada2: '--:--', saida2: '--:--', 
+          ultimaAtualizacao: serverTimestamp()
+        };
+        
+        if (assinaturaAutomatica) dadosSalvar.assinatura = assinaturaAutomatica;
+
+        await setDoc(doc(dbFolha, 'registros_ponto', `${func.id}_${diaISO}`), dadosSalvar, { merge: true });
+        
+        // Avança um dia
+        dataAtual.setDate(dataAtual.getDate() + 1); 
       }
-    });
+
+      mostrarAviso(`"${loteTipo}" registado(a) com sucesso de ${loteInicio.split('-').reverse().join('/')} até ${loteFim.split('-').reverse().join('/')}!`, 'sucesso');
+      
+      // Limpa os dados do modal e fecha
+      setModalLoteAberto(false);
+      setLoteFuncId('');
+      setLoteTipo('Férias');
+      setLoteInicio(hojeString);
+      setLoteFim(hojeString);
+      
+    } catch (error) { 
+      mostrarAviso(`Erro ao processar as datas.`, 'erro'); 
+    }
   };
 
   const abrirModalEdicao = (func: any, registro: any) => {
     setFuncEditando({ ...func, idRegistro: `${func.id}_${dataFiltro}` });
-    setEntrada1(extrairParaInput(registro?.entrada1));
-    setSaida1(extrairParaInput(registro?.saida1));
-    setEntrada2(extrairParaInput(registro?.entrada2));
-    setSaida2(extrairParaInput(registro?.saida2));
+    setEntrada1(extrairParaInput(registro?.entrada1)); setSaida1(extrairParaInput(registro?.saida1));
+    setEntrada2(extrairParaInput(registro?.entrada2)); setSaida2(extrairParaInput(registro?.saida2));
     setCargaHorariaManual(registro?.cargaHorariaPrevista || jornadaPadrao.cargaHoraria);
     setJustificativa(registro?.justificativa || '');
     setModalAberto(true);
@@ -211,58 +211,49 @@ export default function GestaoPonto() {
       await setDoc(doc(dbFolha, 'registros_ponto', funcEditando.idRegistro), {
         funcionarioId: funcEditando.id, nomeFuncionario: funcEditando.nome, data: dataFiltro,
         entrada1, saida1, entrada2, saida2, cargaHorariaPrevista: cargaHorariaManual, justificativa,
-        statusDia: justificativa || 'Ajustado', 
-        ultimaAtualizacao: serverTimestamp(), editadoManualmente: true
+        statusDia: justificativa || 'Ajustado', ultimaAtualizacao: serverTimestamp(), editadoManualmente: true
       }, { merge: true });
       setModalAberto(false);
-      mostrarAviso("Ponto ajustado manualmente com sucesso!", "sucesso");
-    } catch (error) { mostrarAviso("Erro ao salvar os dados manualmente.", "erro"); }
+      mostrarAviso("Ponto ajustado manualmente!", "sucesso");
+    } catch (error) { mostrarAviso("Erro ao salvar.", "erro"); }
   };
 
   const salvarConfiguracaoGlobal = async () => {
     try {
       await setDoc(doc(dbFolha, 'configuracoes', 'jornada_padrao'), configEdit);
-      setJornadaPadrao(configEdit);
-      setModalConfig(false);
-      mostrarAviso("Quadro de horários global atualizado!", "sucesso");
-    } catch (error) { mostrarAviso("Erro ao salvar as configurações.", "erro"); }
+      setJornadaPadrao(configEdit); setModalConfig(false); mostrarAviso("Quadro de horários atualizado!", "sucesso");
+    } catch (error) { mostrarAviso("Erro ao salvar.", "erro"); }
   };
 
-  // 🛡️ ESCUDO DE HORAS NEGATIVAS
   const calcularBancoHorasDia = (registro: any, funcDataContratacao?: string, dataRef?: string) => {
     const dataAlvo = registro?.data || dataRef;
     
-    // Regra 1: Pré-Contrato (Antes da contratação, não cobra horas)
     if (funcDataContratacao && dataAlvo && dataAlvo < funcDataContratacao) {
-      return { val: 0, text: 'PRÉ-CONTRATO', ignorar: true };
+      return { val: 0, ignorar: true }; // Pré-contrato
     }
 
-    if (!registro) return { val: 0, text: '00:00' };
+    if (!registro) return { val: 0 };
+
+    if (registro.statusDia === 'Falta') {
+      return { val: 0, isFalta: true }; // Falta é tratada como Dia Perdido, não horas negativas
+    }
+    
+    // Todos estes cenários não geram débito nem crédito
+    const tiposAbonados = ['Atestado Médico', 'Falta Justificada', 'Comprovante de Horas', 'Acordo (Pago/Abonado)', 'Férias', 'Licença'];
+    if (tiposAbonados.includes(registro.statusDia) || tiposAbonados.includes(registro.justificativa)) {
+      return { val: 0 }; 
+    }
 
     const minutosEsperados = converterParaMinutos(registro.cargaHorariaPrevista || jornadaPadrao.cargaHoraria);
-
-    if (registro.statusDia === 'Falta') return { val: -minutosEsperados, text: formatarMinutosParaHoras(-minutosEsperados) };
-    
-    // Regra 2: Blindagem contra horas negativas em Justificativas
-    const tiposAbonados = ['Atestado Médico', 'Falta Justificada', 'Comprovante de Horas', 'Acordo (Pago/Abonado)'];
-    if (tiposAbonados.includes(registro.statusDia) || tiposAbonados.includes(registro.justificativa)) {
-      return { val: 0, text: 'JUSTIFICADO' };
-    }
-
-    const e1 = converterParaMinutos(registro.entrada1);
-    const s1 = converterParaMinutos(registro.saida1);
-    const e2 = converterParaMinutos(registro.entrada2);
-    const s2 = converterParaMinutos(registro.saida2);
+    const e1 = converterParaMinutos(registro.entrada1); const s1 = converterParaMinutos(registro.saida1);
+    const e2 = converterParaMinutos(registro.entrada2); const s2 = converterParaMinutos(registro.saida2);
 
     const batidasValidas = [e1, s1, e2, s2].filter(tempo => tempo > 0);
     const diaPassado = registro.data < hojeString;
     const temSaidaFinal = registro.saida2 && registro.saida2 !== '--:--';
     
-    if (!diaPassado && !temSaidaFinal) return null;
-
-    if (diaPassado && batidasValidas.length % 2 !== 0) {
-       return { val: 0, text: 'INCOMPLETO', erro: true }; 
-    }
+    if (!diaPassado && !temSaidaFinal) return null; // Dia ainda a decorrer
+    if (diaPassado && batidasValidas.length % 2 !== 0) return { val: 0, erro: true }; 
 
     let minutosTrabalhados = 0;
     for (let i = 0; i < batidasValidas.length - 1; i += 2) {
@@ -270,25 +261,37 @@ export default function GestaoPonto() {
     }
 
     const diferencaMinutos = minutosTrabalhados - minutosEsperados;
-    if (Math.abs(diferencaMinutos) <= 10) return { val: 0, text: 'OK' };
+    if (Math.abs(diferencaMinutos) <= 10) return { val: 0 }; // Tolerância 10 minutos
 
-    return { val: diferencaMinutos, text: formatarMinutosParaHoras(diferencaMinutos) };
+    return { val: diferencaMinutos }; // Se for +, é extra. Se for -, é atraso.
   };
 
-  const calcularSaldoMensal = (funcId: string, funcDataContratacao?: string) => {
+  const calcularSaldoMensalDetalhado = (funcId: string, funcDataContratacao?: string) => {
     const registrosFunc = registrosMes.filter(r => r.funcionarioId === funcId);
-    let saldoTotalMinutos = 0;
+    let totalExtras = 0;
+    let totalAtrasos = 0;
+    let diasFalta = 0;
     let pendencias = 0;
 
     registrosFunc.forEach(reg => {
       const calculoDia = calcularBancoHorasDia(reg, funcDataContratacao);
-      if (calculoDia && !calculoDia.ignorar && calculoDia.val !== undefined) {
-        saldoTotalMinutos += calculoDia.val;
+      if (calculoDia && !calculoDia.ignorar) {
+        if (calculoDia.isFalta) {
+          diasFalta++;
+        } else if (calculoDia.val !== undefined) {
+          if (calculoDia.val > 0) totalExtras += calculoDia.val;
+          else if (calculoDia.val < 0) totalAtrasos += Math.abs(calculoDia.val);
+        }
       }
       if (calculoDia?.erro) pendencias++;
     });
 
-    return { val: saldoTotalMinutos, text: formatarMinutosParaHoras(saldoTotalMinutos), pendencias };
+    return { 
+      extras: formatarMinutosParaHoras(totalExtras), 
+      atrasos: formatarMinutosParaHoras(totalAtrasos), 
+      faltas: diasFalta, 
+      pendencias 
+    };
   };
 
   const funcionariosFiltrados = funcionarios.filter(f => f.nome.toLowerCase().includes(termoBusca.toLowerCase()) || f.matricula.includes(termoBusca));
@@ -297,14 +300,12 @@ export default function GestaoPonto() {
 
   funcionariosFiltrados.forEach(func => {
     const antesDaContratacao = func.dataContratacao && dataFiltro < func.dataContratacao;
-    if (antesDaContratacao) return; // Não entra na contagem de ausentes
+    if (antesDaContratacao) return; 
 
     const regHoje = registrosHoje.find(r => r.funcionarioId === func.id);
-    const tiposAbonados = ['Atestado Médico', 'Falta Justificada', 'Comprovante de Horas', 'Acordo (Pago/Abonado)'];
+    const tiposAbonados = ['Atestado Médico', 'Falta Justificada', 'Comprovante de Horas', 'Acordo (Pago/Abonado)', 'Férias', 'Licença'];
     
-    const temFaltaOuAtestado = regHoje?.statusDia === 'Falta' || tiposAbonados.includes(regHoje?.statusDia);
-    
-    if (temFaltaOuAtestado) { statsAusentes++; } 
+    if (regHoje?.statusDia === 'Falta' || tiposAbonados.includes(regHoje?.statusDia)) { statsAusentes++; } 
     else if (regHoje?.entrada1 && regHoje.entrada1 !== '--:--') {
       statsPresentes++;
       if (regHoje.entrada1 > jornadaPadrao.limiteAtraso) statsAtrasados++;
@@ -315,7 +316,7 @@ export default function GestaoPonto() {
     }
   });
 
-  if (carregando) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Sincronizando sistemas de RH...</div>;
+  if (carregando) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>A sincronizar sistemas de RH...</div>;
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: isMobile ? '15px 10px' : '30px 20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -327,6 +328,7 @@ export default function GestaoPonto() {
           </div>
         )}
 
+        {/* HEADER DA PÁGINA */}
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: '20px', marginBottom: '25px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={{ backgroundColor: '#eff6ff', padding: '14px', borderRadius: '16px', border: '1px solid #bfdbfe', boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.1)' }}>
@@ -335,21 +337,27 @@ export default function GestaoPonto() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <h1 style={{ fontSize: isMobile ? '22px' : '28px', color: '#0f172a', margin: '0 0 4px 0', fontWeight: '800', letterSpacing: '-0.5px' }}>Gestão de Ponto</h1>
-                <button onClick={() => setModalConfig(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '5px' }} title="Configurar Quadro de Horários"><Settings size={22} /></button>
+                <button onClick={() => setModalConfig(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '5px' }} title="Configurar Quadro"><Settings size={22} /></button>
               </div>
               <p style={{ margin: 0, fontSize: '14px', color: '#64748b', fontWeight: '500' }}>Jornada Oficial: <strong style={{ color: '#475569' }}>{jornadaPadrao.entrada} - {jornadaPadrao.saidaFim}</strong></p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', alignItems: 'center' }}>
-            <Button onClick={() => window.open('/ponto', '_blank')} style={{ backgroundColor: '#eef2ff', color: '#3b82f6', border: '1px solid #c7d2fe', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '12px' }} title="Abrir o Terminal de Batida de Ponto">
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* 🚀 NOVO BOTÃO DE FÉRIAS / AFASTAMENTOS */}
+            <Button onClick={() => setModalLoteAberto(true)} style={{ backgroundColor: '#fdf4ff', color: '#c026d3', border: '1px solid #f5d0fe', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '12px', fontWeight: 'bold' }}>
+              <Plane size={16} /> Lançar Afastamento
+            </Button>
+
+            <Button onClick={() => window.open('/ponto', '_blank')} style={{ backgroundColor: '#eef2ff', color: '#3b82f6', border: '1px solid #c7d2fe', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '12px' }}>
               <ExternalLink size={16} /> Terminal
             </Button>
             
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'white', padding: '8px 15px', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'white', padding: '8px 15px', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
               <CalendarDays size={18} color="#6366f1" />
               <input type="date" value={dataFiltro} max={hojeString} onChange={e => setDataFiltro(e.target.value)} style={{ border: 'none', outline: 'none', fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }} />
             </div>
+
             <Button onClick={() => setModalExport(true)} style={{ backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '12px' }}>
               <FileSpreadsheet size={16} /> Exportar
             </Button>
@@ -363,27 +371,23 @@ export default function GestaoPonto() {
             Visão Diária ({dataFormatadaVisual})
           </button>
           <button onClick={() => setAbaAtiva('banco')} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: 'none', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s', backgroundColor: abaAtiva === 'banco' ? '#8b5cf6' : 'transparent', color: abaAtiva === 'banco' ? 'white' : '#64748b' }}>
-            Banco de Horas Mensal ({dataFiltro.substring(0, 7).split('-').reverse().join('/')})
+            Extrato Mensal ({dataFiltro.substring(0, 7).split('-').reverse().join('/')})
           </button>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '0 15px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', padding: '0 15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <Search size={18} color="#94a3b8" />
-            <input type="text" placeholder="Buscar funcionário..." value={termoBusca} onChange={e => setTermoBusca(e.target.value)} style={{ border: 'none', padding: '12px 10px', outline: 'none', fontSize: '14px', width: isMobile ? '100%' : '200px', backgroundColor: 'transparent' }} />
+            <input type="text" placeholder="Procurar funcionário..." value={termoBusca} onChange={e => setTermoBusca(e.target.value)} style={{ border: 'none', padding: '12px 10px', outline: 'none', fontSize: '14px', width: isMobile ? '100%' : '200px' }} />
           </div>
         </div>
 
         {abaAtiva === 'diario' && isDiaInativo && (
           <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '16px', padding: '20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '15px', animation: 'fadeIn 0.5s' }}>
-             <div style={{ backgroundColor: '#dbeafe', padding: '10px', borderRadius: '50%' }}>
-               <CalendarX2 size={28} color="#2563eb" />
-             </div>
+             <div style={{ backgroundColor: '#dbeafe', padding: '10px', borderRadius: '50%' }}><CalendarX2 size={28} color="#2563eb" /></div>
              <div>
-               <h3 style={{ margin: '0 0 5px 0', color: '#1e3a8a', fontSize: '16px', fontWeight: 'bold' }}>
-                 {isFeriado ? 'Feriado Identificado' : 'Fim de Semana (Sábado/Domingo)'}
-               </h3>
-               <p style={{ margin: 0, color: '#3b82f6', fontSize: '13px' }}>Neste dia o expediente não é cobrado. O painel está em modo de observação.</p>
+               <h3 style={{ margin: '0 0 5px 0', color: '#1e3a8a', fontSize: '16px', fontWeight: 'bold' }}>{isFeriado ? 'Feriado' : 'Fim de Semana'}</h3>
+               <p style={{ margin: 0, color: '#3b82f6', fontSize: '13px' }}>Neste dia o expediente não é cobrado.</p>
              </div>
           </div>
         )}
@@ -394,9 +398,7 @@ export default function GestaoPonto() {
               const regHoje = registrosHoje.find(r => r.funcionarioId === func.id);
               const acordoHoje = acordosHoje.find(a => a.funcionarioId === func.id);
               
-              const antesDaContratacao = func.dataContratacao && dataFiltro < func.dataContratacao;
-              
-              if (antesDaContratacao) {
+              if (func.dataContratacao && dataFiltro < func.dataContratacao) {
                 return (
                   <div key={func.id} style={{ backgroundColor: '#f8fafc', borderRadius: '20px', border: '1px dashed #cbd5e1', padding: '20px', display: 'flex', alignItems: 'center', gap: '15px', opacity: 0.7 }}>
                     <div style={{ width: '40px', height: '40px', backgroundColor: '#e2e8f0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>{func.nome.charAt(0)}</div>
@@ -410,7 +412,7 @@ export default function GestaoPonto() {
               }
 
               const concluido = regHoje?.saida2 && regHoje.saida2 !== '--:--';
-              const tiposAbonados = ['Atestado Médico', 'Falta Justificada', 'Comprovante de Horas', 'Acordo (Pago/Abonado)'];
+              const tiposAbonados = ['Atestado Médico', 'Falta Justificada', 'Comprovante de Horas', 'Acordo (Pago/Abonado)', 'Férias', 'Licença'];
               const temFaltaOuAtestado = regHoje?.statusDia === 'Falta' || tiposAbonados.includes(regHoje?.statusDia);
               const semPontoAinda = !regHoje?.entrada1 && !temFaltaOuAtestado;
               
@@ -434,14 +436,13 @@ export default function GestaoPonto() {
         )}
 
         {abaAtiva === 'banco' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '15px', animation: 'fadeIn 0.4s' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px', animation: 'fadeIn 0.4s' }}>
             {funcionariosFiltrados.map(func => {
-              const saldoMensal = calcularSaldoMensal(func.id, func.dataContratacao);
-              const estaNegativo = saldoMensal.val < 0;
+              const detalheMensal = calcularSaldoMensalDetalhado(func.id, func.dataContratacao);
 
               return (
-                <div key={func.id} style={{ backgroundColor: 'white', borderRadius: '20px', border: '1px solid #e2e8f0', padding: '24px', display: 'flex', flexDirection: 'column', gap: '15px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', position: 'relative', overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '6px', backgroundColor: estaNegativo ? '#ef4444' : '#10b981' }}></div>
+                <div key={func.id} style={{ backgroundColor: 'white', borderRadius: '20px', border: '1px solid #e2e8f0', padding: '24px', display: 'flex', flexDirection: 'column', gap: '15px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                  
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ width: '45px', height: '45px', backgroundColor: '#f8fafc', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontWeight: 'bold', fontSize: '18px', border: '1px solid #e2e8f0' }}>{func.nome.charAt(0)}</div>
                     <div>
@@ -450,21 +451,27 @@ export default function GestaoPonto() {
                     </div>
                   </div>
                   
-                  {saldoMensal.pendencias > 0 && (
+                  {detalheMensal.pendencias > 0 && (
                      <div style={{ fontSize: '11px', color: '#b45309', backgroundColor: '#fffbeb', padding: '8px', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                       <AlertTriangle size={14}/> {saldoMensal.pendencias} dia(s) com erro/incompleto no mês.
+                       <AlertTriangle size={14}/> {detalheMensal.pendencias} dia(s) incompleto(s) no mês.
                      </div>
                   )}
 
-                  <div style={{ backgroundColor: estaNegativo ? '#fef2f2' : '#f0fdf4', border: `1px solid ${estaNegativo ? '#fecaca' : '#bbf7d0'}`, borderRadius: '12px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Scale size={20} color={estaNegativo ? '#dc2626' : '#16a34a'} />
-                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: estaNegativo ? '#991b1b' : '#166534' }}>Saldo Mensal</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#166534', display: 'flex', alignItems: 'center', gap: '4px' }}><TrendingUp size={14}/> Horas Extras</span>
+                      <strong style={{ fontSize: '20px', color: '#10b981' }}>{detalheMensal.extras}</strong>
                     </div>
-                    <strong style={{ fontSize: '22px', fontWeight: '900', color: estaNegativo ? '#ef4444' : '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {estaNegativo ? <TrendingDown size={20}/> : <TrendingUp size={20}/>}
-                      {saldoMensal.text}
-                    </strong>
+
+                    <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '4px' }}><TrendingDown size={14}/> Atrasos/Saídas</span>
+                      <strong style={{ fontSize: '20px', color: '#ef4444' }}>{detalheMensal.atrasos}</strong>
+                    </div>
+                    
+                    <div style={{ gridColumn: 'span 2', backgroundColor: '#fff7ed', border: '1px solid #ffedd5', borderRadius: '12px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '6px' }}><UserX size={16}/> Faltas Acumuladas</span>
+                      <strong style={{ fontSize: '18px', color: '#ea580c' }}>{detalheMensal.faltas} dia(s)</strong>
+                    </div>
                   </div>
                 </div>
               );
@@ -474,36 +481,57 @@ export default function GestaoPonto() {
 
       </div>
 
-      <ModalConfigPonto aberto={modalConfig} onClose={() => setModalConfig(false)} configEdit={configEdit} setConfigEdit={setConfigEdit} salvarConfiguracao={salvarConfiguracaoGlobal} isMobile={isMobile} />
-      
-      <ModalEdicaoPonto aberto={modalAberto} onClose={() => setModalAberto(false)} funcEditando={funcEditando} dataFiltro={dataFiltro} entrada1={entrada1} setEntrada1={setEntrada1} saida1={saida1} setSaida1={setSaida1} entrada2={entrada2} setEntrada2={setEntrada2} saida2={saida2} setSaida2={setSaida2} cargaHorariaManual={cargaHorariaManual} setCargaHorariaManual={setCargaHorariaManual} justificativa={justificativa} setJustificativa={setJustificativa} salvarEdicaoPonto={salvarEdicaoPonto} isMobile={isMobile} />
-      
-      <ModalExportacaoPonto aberto={modalExport} onClose={() => setModalExport(false)} mesExport={mesExport} setMesExport={setMesExport} funcionarios={funcionarios} exportando={exportando} setExportando={setExportando} jornadaPadrao={jornadaPadrao} />
-      
-      {dialogoConfirmacao && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)', padding: '20px' }}>
-           <div style={{ backgroundColor: 'white', borderRadius: '24px', padding: '30px', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', animation: 'fadeIn 0.3s' }}>
-              <div style={{ backgroundColor: '#fef2f2', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto' }}>
-                 <AlertCircle size={30} color="#ef4444" />
-              </div>
-              <h3 style={{ margin: '0 0 10px 0', color: '#0f172a', fontSize: '20px', fontWeight: '800' }}>{dialogoConfirmacao.titulo}</h3>
-              <p style={{ margin: '0 0 25px 0', color: '#64748b', fontSize: '15px', lineHeight: '1.5' }}>{dialogoConfirmacao.mensagem}</p>
+      {/* 🚀 NOVO MODAL: LANÇAMENTO DE FÉRIAS E AFASTAMENTOS */}
+      {modalLoteAberto && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+           <div style={{ backgroundColor: 'white', borderRadius: '24px', padding: '30px', maxWidth: '450px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', animation: 'fadeIn 0.3s' }}>
               
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                 <div style={{ backgroundColor: '#fdf4ff', padding: '10px', borderRadius: '50%' }}><CalendarPlus size={24} color="#c026d3" /></div>
+                 <div>
+                    <h3 style={{ margin: '0 0 2px 0', color: '#0f172a', fontSize: '18px', fontWeight: 'bold' }}>Afastamentos e Férias</h3>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Preenchimento automático em lote</p>
+                 </div>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px' }}>
+                 
+                 <div>
+                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>1. Colaborador</label>
+                   <select value={loteFuncId} onChange={e => setLoteFuncId(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}>
+                     <option value="">Selecione quem irá se ausentar...</option>
+                     {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                   </select>
+                 </div>
+
+                 <div>
+                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>2. Tipo de Ocorrência</label>
+                   <select value={loteTipo} onChange={e => setLoteTipo(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}>
+                     <option value="Férias">Férias</option>
+                     <option value="Atestado Médico">Atestado Médico (Dias Corridos)</option>
+                     <option value="Falta">Falta (Descontar dias)</option>
+                     <option value="Licença">Licença Maternidade/Paternidade</option>
+                     <option value="Suspensão">Suspensão Disciplinar</option>
+                   </select>
+                 </div>
+
+                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <Input label="De (Data Inicial)" type="date" value={loteInicio} onChange={e => setLoteInicio(e.target.value)} />
+                    <Input label="Até (Data Final)" type="date" value={loteFim} onChange={e => setLoteFim(e.target.value)} />
+                 </div>
+              </div>
+
               <div style={{ display: 'flex', gap: '10px' }}>
-                <Button onClick={() => setDialogoConfirmacao(null)} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569', border: 'none', height: '45px', fontWeight: 'bold' }}>
-                  Cancelar
-                </Button>
-                <Button onClick={() => { dialogoConfirmacao.acaoConfirmar(); setDialogoConfirmacao(null); }} style={{ flex: 1, backgroundColor: '#ef4444', color: 'white', border: 'none', height: '45px', fontWeight: 'bold' }}>
-                  Confirmar Ação
-                </Button>
+                <Button onClick={() => setModalLoteAberto(false)} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569', height: '45px' }}>Cancelar</Button>
+                <Button onClick={processarLancamentoLote} style={{ flex: 1, backgroundColor: '#c026d3', height: '45px', fontWeight: 'bold' }}>Processar Período</Button>
               </div>
            </div>
         </div>
       )}
 
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      `}</style>
+      <ModalConfigPonto aberto={modalConfig} onClose={() => setModalConfig(false)} configEdit={configEdit} setConfigEdit={setConfigEdit} salvarConfiguracao={salvarConfiguracaoGlobal} isMobile={isMobile} />
+      <ModalEdicaoPonto aberto={modalAberto} onClose={() => setModalAberto(false)} funcEditando={funcEditando} dataFiltro={dataFiltro} entrada1={entrada1} setEntrada1={setEntrada1} saida1={saida1} setSaida1={setSaida1} entrada2={entrada2} setEntrada2={setEntrada2} saida2={saida2} setSaida2={setSaida2} cargaHorariaManual={cargaHorariaManual} setCargaHorariaManual={setCargaHorariaManual} justificativa={justificativa} setJustificativa={setJustificativa} salvarEdicaoPonto={salvarEdicaoPonto} isMobile={isMobile} />
+      <ModalExportacaoPonto aberto={modalExport} onClose={() => setModalExport(false)} mesExport={mesExport} setMesExport={setMesExport} funcionarios={funcionarios} exportando={exportando} setExportando={setExportando} jornadaPadrao={jornadaPadrao} />
     </div>
   );
 }

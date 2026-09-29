@@ -4,12 +4,10 @@ import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp
 import { db } from '../services/firebase'; 
 import { dbFolha } from '../services/firebaseFolha'; 
 
-import { Clock, Fingerprint, AlertCircle, CheckCircle2, User, LogOut, ChevronRight, MapPin, MapPinOff, RefreshCw, FileSignature, Navigation, HelpCircle } from 'lucide-react';
+import { Fingerprint, AlertCircle, CheckCircle2, User, LogOut, ChevronRight, MapPin, MapPinOff, RefreshCw, FileSignature, Navigation, HelpCircle, Coffee } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import ModalAssinaturaPonto from '../components/ponto/ModalAssinaturaPonto';
-
-// 🔓 ACESSO LIBERADO: A função de calcular distância matemática foi totalmente removida do topo do arquivo.
 
 export default function TerminalPontoPublico() {
   const [horaAtual, setHoraAtual] = useState(new Date());
@@ -47,13 +45,13 @@ export default function TerminalPontoPublico() {
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
-        setErro('Matrícula não encontrada. Verifique o número digitado.');
+        setErro('Matrícula não encontrada. Confirma o número introduzido.');
         return;
       }
 
       const funcData = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
       if ((funcData as any).status === 'desligado') {
-        setErro('Colaborador inativo no sistema.');
+        setErro('Colaborador inativo. Procura os Recursos Humanos.');
         return;
       }
 
@@ -65,7 +63,7 @@ export default function TerminalPontoPublico() {
       setTipoErroGps(null);
 
     } catch (error: any) {
-      setErro('Erro ao carregar dados. Verifique sua internet ou tente novamente.');
+      setErro('Falha na ligação. Verifica a tua internet e tenta novamente.');
       setFuncionario(null);
     }
   };
@@ -105,11 +103,10 @@ export default function TerminalPontoPublico() {
     
     if (!navigator.geolocation) {
       setCarregandoGps(false);
-      setErroGpsVisual("O seu aparelho ou navegador não suporta a função de GPS.");
+      setErroGpsVisual("O teu aparelho não suporta GPS.");
       return;
     }
     
-    // 🔓 ACESSO LIBERADO: Tiramos a trava de precisão. O que o celular mandar, o sistema aceita!
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setCarregandoGps(false);
@@ -120,15 +117,15 @@ export default function TerminalPontoPublico() {
         switch(err.code) {
           case err.PERMISSION_DENIED:
             setTipoErroGps('permissao');
-            setErroGpsVisual("O seu navegador (Chrome/Safari) está bloqueando o acesso à localização.");
+            setErroGpsVisual("O navegador bloqueou a localização. Precisas de permitir o acesso.");
             break;
           case err.POSITION_UNAVAILABLE:
           case err.TIMEOUT:
             setTipoErroGps('indisponivel');
-            setErroGpsVisual("Não foi possível encontrar o sinal do GPS do seu aparelho.");
+            setErroGpsVisual("Sinal de GPS fraco ou indisponível.");
             break;
           default:
-            setErroGpsVisual("Erro desconhecido ao obter a localização.");
+            setErroGpsVisual("Erro desconhecido ao procurar o sinal.");
             break;
         }
       },
@@ -140,11 +137,9 @@ export default function TerminalPontoPublico() {
     if (!funcionario) return;
 
     if (!localizacaoAtual) {
-      setErro("Você precisa capturar sua localização antes de continuar.");
+      setErro("Precisas de confirmar a tua localização no botão acima primeiro.");
       return;
     }
-
-    // 🔓 ACESSO LIBERADO: Toda a lógica de medir distância para o Galpão 1 e Galpão 2 foi apagada daqui.
 
     let qualPonto: 'entrada1' | 'saida1' | 'entrada2' | 'saida2' | null = null;
     if (!registroHoje?.entrada1) qualPonto = 'entrada1';
@@ -153,8 +148,23 @@ export default function TerminalPontoPublico() {
     else if (!registroHoje?.saida2) qualPonto = 'saida2';
 
     if (!qualPonto) {
-      setErro("Todos os pontos já foram registrados hoje!");
+      setErro("O teu expediente de hoje já está completo!");
       return;
+    }
+
+    // 🕒 LÓGICA DE BLOQUEIO DE DESCANSO (Mínimo 60 minutos)
+    if (qualPonto === 'entrada2' && registroHoje?.saida1) {
+      const [hSaida, mSaida] = registroHoje.saida1.substring(0,5).split(':').map(Number);
+      const minutosSaida = (hSaida * 60) + mSaida;
+      const minutosAgora = (horaAtual.getHours() * 60) + horaAtual.getMinutes();
+      
+      const diferencaMinutos = minutosAgora - minutosSaida;
+
+      if (diferencaMinutos < 60) {
+        const faltam = 60 - diferencaMinutos;
+        setErro(`Ainda em período de descanso! Faltam ${faltam} minuto(s) para poderes registar o teu regresso.`);
+        return;
+      }
     }
 
     setErro('');
@@ -186,9 +196,9 @@ export default function TerminalPontoPublico() {
         await batch.commit();
         setDiasPendentesAssinatura([]); 
         setModalAssinatura(false);
-        setSucesso({ visivel: true, mensagem: 'Assinaturas pendentes regularizadas com sucesso! Você já pode registrar o ponto de hoje.', horaExata: 'OK' });
+        setSucesso({ visivel: true, mensagem: 'Documentos regularizados! Já podes registar o ponto de hoje.', horaExata: 'OK' });
       } catch(e) {
-        setErro("Erro ao assinar dias anteriores. Procure o RH.");
+        setErro("Erro ao assinar. Contacta os Recursos Humanos.");
       }
     } else if (modoAssinatura === 'saida_hoje') {
       if (proximoPonto && localizacaoAtual) {
@@ -213,7 +223,6 @@ export default function TerminalPontoPublico() {
         ultimaAtualizacao: serverTimestamp()
       };
 
-      // 🗺️ AUDITORIA: Salva o link do mapa no banco para o RH conferir depois
       if (coords) dadosAtualizar[`${campoPonto}_local`] = `https://maps.google.com/?q=${coords.lat},${coords.lng}`;
       if (assinaturaBase64) dadosAtualizar.assinatura = assinaturaBase64;
 
@@ -222,25 +231,30 @@ export default function TerminalPontoPublico() {
       setRegistroHoje({ ...registroHoje, ...dadosAtualizar });
       setModalAssinatura(false);
       
-      setSucesso({ visivel: true, mensagem: 'Ponto registrado com sucesso!', horaExata: horaParaBancoComSegundos });
+      // UX: A hora de sucesso exibe sem segundos
+      setSucesso({ visivel: true, mensagem: 'Ponto registado com sucesso!', horaExata: horaParaBancoComSegundos.substring(0, 5) });
 
     } catch (error) {
-      setErro("Erro ao registrar o ponto no servidor. Tente novamente.");
+      setErro("Falha ao comunicar com o servidor. Tenta novamente.");
     }
   };
 
   const dataFormatada = horaAtual.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-  const horaCompleta = horaAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const horaCompleta = horaAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); // Removemos os segundos do relógio principal
+
+  // 👁️ UX: Função helper para cortar os segundos da visualização
+  const formatarVisual = (horaStr?: string) => horaStr ? horaStr.substring(0, 5) : '--:--';
 
   const CartaoHorario = ({ titulo, hora }: { titulo: string, hora?: string }) => {
-    const preenchido = hora && hora !== '--:--';
+    const horaLimpa = formatarVisual(hora);
+    const preenchido = horaLimpa !== '--:--';
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '12px 2px', borderRadius: '12px', backgroundColor: preenchido ? '#f0fdf4' : '#f8fafc', border: preenchido ? '1px solid #bbf7d0' : '1px dashed #cbd5e1', transition: 'all 0.3s ease' }}>
         <span style={{ fontSize: '10px', color: preenchido ? '#166534' : '#64748b', fontWeight: 'bold', marginBottom: '4px', textAlign: 'center' }}>{titulo}</span>
         {preenchido ? (
-          <strong style={{ fontSize: '15px', color: '#15803d', display: 'flex', alignItems: 'center', gap: '2px', letterSpacing: '-0.5px' }}>{hora} <CheckCircle2 size={12} color="#22c55e" /></strong>
+          <strong style={{ fontSize: '15px', color: '#15803d', display: 'flex', alignItems: 'center', gap: '2px', letterSpacing: '-0.5px' }}>{horaLimpa} <CheckCircle2 size={12} color="#22c55e" /></strong>
         ) : (
-          <strong style={{ fontSize: '15px', color: '#cbd5e1' }}>--:--:--</strong>
+          <strong style={{ fontSize: '15px', color: '#cbd5e1' }}>--:--</strong>
         )}
       </div>
     );
@@ -257,9 +271,9 @@ export default function TerminalPontoPublico() {
           <div style={{ position: 'relative', zIndex: 1 }}>
             <h2 style={{ margin: 0, color: '#94a3b8', fontSize: '14px', textTransform: 'capitalize', fontWeight: '500' }}>{dataFormatada}</h2>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '15px 0' }}>
-              <span style={{ fontSize: '56px', fontWeight: '900', letterSpacing: '-1px', lineHeight: '1', fontFamily: 'monospace', color: 'white' }}>{horaCompleta}</span>
+              <span style={{ fontSize: '64px', fontWeight: '900', letterSpacing: '-2px', lineHeight: '1', fontFamily: 'system-ui', color: 'white' }}>{horaCompleta}</span>
             </div>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><MapPin size={14} /> Terminal com Registro de GPS</p>
+            <p style={{ margin: 0, color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><MapPin size={14} /> Sistema Integrado de Ponto</p>
           </div>
         </div>
 
@@ -268,12 +282,12 @@ export default function TerminalPontoPublico() {
             <form onSubmit={buscarFuncionario} style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.5s' }}>
               <div style={{ textAlign: 'center', marginBottom: '10px' }}>
                 <div style={{ width: '60px', height: '60px', backgroundColor: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px auto' }}><Fingerprint size={32} color="#3b82f6" /></div>
-                <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '20px', fontWeight: '800' }}>Olá, Colaborador!</h3>
-                <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Digite sua matrícula para acessar.</p>
+                <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '20px', fontWeight: '800' }}>Olá, Equipa!</h3>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Insere a tua matrícula para avançar.</p>
               </div>
 
               <div>
-                <Input label="" value={matricula} onChange={e => setMatricula(e.target.value)} type="number" placeholder="Sua Matrícula (Ex: 1001)" style={{ textAlign: 'center', fontSize: '18px', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', backgroundColor: '#f8fafc' }} />
+                <Input label="" value={matricula} onChange={e => setMatricula(e.target.value)} type="number" placeholder="A tua Matrícula (Ex: 1001)" style={{ textAlign: 'center', fontSize: '18px', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', backgroundColor: '#f8fafc' }} />
               </div>
               
               {erro && (
@@ -301,10 +315,10 @@ export default function TerminalPontoPublico() {
               {diasPendentesAssinatura.length > 0 ? (
                 <div style={{ backgroundColor: '#fffbeb', border: '2px solid #fde68a', borderRadius: '16px', padding: '20px', textAlign: 'center' }}>
                   <FileSignature size={48} color="#d97706" style={{ margin: '0 auto 15px auto' }} />
-                  <h3 style={{ margin: '0 0 10px 0', color: '#92400e', fontSize: '18px', fontWeight: '800' }}>Atenção, {funcionario.nome.split(' ')[0]}</h3>
+                  <h3 style={{ margin: '0 0 10px 0', color: '#92400e', fontSize: '18px', fontWeight: '800' }}>Assinaturas Pendentes</h3>
                   
                   <p style={{ margin: '0 0 10px 0', color: '#b45309', fontSize: '13px', lineHeight: '1.5' }}>
-                    Você possui <strong>{diasPendentesAssinatura.length} dia(s)</strong> anterior(es) com pendência de assinatura. Confira as datas abaixo:
+                    Tens <strong>{diasPendentesAssinatura.length} dia(s)</strong> de trabalho que precisam da tua assinatura digital para regularizar.
                   </p>
                   
                   <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px', marginBottom: '15px', maxHeight: '100px', overflowY: 'auto', border: '1px solid #fde68a', textAlign: 'left' }}>
@@ -312,27 +326,23 @@ export default function TerminalPontoPublico() {
                       {diasPendentesAssinatura.map((dia, idx) => (
                         <li key={idx}>
                           <strong>{dia.data.split('-').reverse().join('/')}</strong> 
-                          {dia.statusDia ? ` - (${dia.statusDia})` : ' - (Registro s/ Assinatura)'}
+                          {dia.statusDia ? ` - (${dia.statusDia})` : ' - (Registo s/ Assinatura)'}
                         </li>
                       ))}
                     </ul>
                   </div>
 
-                  <p style={{ margin: '0 0 20px 0', color: '#b45309', fontSize: '13px', lineHeight: '1.5' }}>
-                    Por favor, assine para regularizar a sua ficha nestes dias e liberar o ponto de hoje.
-                  </p>
-
                   <Button 
                     onClick={iniciarAssinaturaRetroativa}
                     style={{ width: '100%', height: '55px', fontSize: '16px', fontWeight: 'bold', backgroundColor: '#d97706', color: 'white', borderRadius: '12px' }}
                   >
-                    Regularizar Assinaturas
+                    Assinar e Regularizar Agora
                   </Button>
                 </div>
               ) : (
                 <>
                   <div style={{ marginBottom: '25px' }}>
-                    <h4 style={{ fontSize: '13px', color: '#475569', margin: '0 0 15px 0', fontWeight: 'bold', textTransform: 'uppercase' }}>Registros de Hoje</h4>
+                    <h4 style={{ fontSize: '13px', color: '#475569', margin: '0 0 15px 0', fontWeight: 'bold', textTransform: 'uppercase' }}>O teu Registo de Hoje</h4>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <CartaoHorario titulo="ENTRADA" hora={registroHoje?.entrada1} />
                       <CartaoHorario titulo="SAÍDA" hora={registroHoje?.saida1} />
@@ -343,21 +353,22 @@ export default function TerminalPontoPublico() {
 
                   {!registroHoje?.saida2 ? (
                     <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #cbd5e1', marginBottom: '15px' }}>
-                      <h4 style={{ fontSize: '14px', color: '#0f172a', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MapPin size={18} color="#3b82f6" /> Localização
-                      </h4>
-                      <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 15px 0', lineHeight: '1.4' }}>
-                        Precisamos salvar o local em que o seu registro foi feito.
-                      </p>
-
+                      
                       {!localizacaoAtual ? (
                         <>
+                          <h4 style={{ fontSize: '14px', color: '#0f172a', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <MapPin size={18} color="#3b82f6" /> Localização Exigida
+                          </h4>
+                          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 15px 0', lineHeight: '1.4' }}>
+                            Confirma a tua presença capturando o local onde te encontras neste momento.
+                          </p>
+
                           <Button 
                             onClick={acionarGpsManual} 
                             disabled={carregandoGps}
                             style={{ width: '100%', height: '55px', fontSize: '15px', fontWeight: 'bold', backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '12px', display: 'flex', justifyContent: 'center', gap: '8px' }}
                           >
-                            {carregandoGps ? <><RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }}/> Carregando Local...</> : <><Navigation size={18} /> Confirmar Local Atual</>}
+                            {carregandoGps ? <><RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }}/> A carregar Local...</> : <><Navigation size={18} /> Confirmar Localização</>}
                           </Button>
                           
                           {erroGpsVisual && (
@@ -369,20 +380,10 @@ export default function TerminalPontoPublico() {
 
                                 {tipoErroGps === 'permissao' && (
                                   <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '15px' }}>
-                                    <h5 style={{ margin: '0 0 8px 0', color: '#92400e', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><HelpCircle size={14}/> Como permitir a localização:</h5>
-                                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#b45309', fontSize: '12px', lineHeight: '1.6' }}>
-                                      <li><strong>No iPhone (Safari):</strong> Abra o app <strong>Ajustes</strong> &gt; Procure por <strong>Safari</strong> &gt; Role até <strong>Localização</strong> &gt; Marque <strong>"Permitir"</strong>.</li>
-                                      <li><strong>No Android (Chrome):</strong> Toque no ícone de <strong>Cadeado</strong> ou <strong>Configurações</strong> ao lado do endereço do site (lá em cima) &gt; Permissões &gt; Permitir Localização.</li>
-                                    </ul>
-                                  </div>
-                                )}
-                                
-                                {tipoErroGps === 'indisponivel' && (
-                                  <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '15px' }}>
                                     <h5 style={{ margin: '0 0 8px 0', color: '#92400e', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><HelpCircle size={14}/> Como resolver:</h5>
                                     <ul style={{ margin: 0, paddingLeft: '20px', color: '#b45309', fontSize: '12px', lineHeight: '1.6' }}>
-                                      <li>Desligue e ligue o GPS (Localização) do seu celular.</li>
-                                      <li>Certifique-se de que o modo "Economia de Bateria" não desligou o seu GPS.</li>
+                                      <li><strong>iPhone (Safari):</strong> Abre os <strong>Ajustes</strong> &gt; <strong>Safari</strong> &gt; <strong>Localização</strong> &gt; Marca <strong>"Permitir"</strong>.</li>
+                                      <li><strong>Android (Chrome):</strong> Toca no ícone de <strong>Cadeado</strong> na barra superior ao lado do link &gt; Permissões &gt; Permitir Localização.</li>
                                     </ul>
                                   </div>
                                 )}
@@ -392,15 +393,22 @@ export default function TerminalPontoPublico() {
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                           <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                            <iframe width="100%" height="120" style={{ border: 0, display: 'block' }} loading="lazy" src={`https://maps.google.com/maps?q=${localizacaoAtual.lat},${localizacaoAtual.lng}&z=16&output=embed`} />
+                            <iframe width="100%" height="100" style={{ border: 0, display: 'block', pointerEvents: 'none' }} src={`https://maps.google.com/maps?q=${localizacaoAtual.lat},${localizacaoAtual.lng}&z=16&output=embed`} />
                             <div style={{ padding: '6px', backgroundColor: '#dcfce7', fontSize: '11px', color: '#166534', textAlign: 'center', fontWeight: 'bold' }}>
-                              Local salvo com sucesso!
+                              Localização validada com sucesso!
                             </div>
                           </div>
                           
+                          {/* 🕒 INSTRUÇÃO VISUAL DO DESCANSO NO BOTÃO DE VOLTAR DO ALMOÇO */}
+                          {(!registroHoje?.entrada2 && registroHoje?.saida1) && (
+                            <div style={{ fontSize: '12px', color: '#0369a1', backgroundColor: '#e0f2fe', padding: '10px', borderRadius: '8px', textAlign: 'center', border: '1px solid #bae6fd', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                               <Coffee size={14}/> Lembra-te: O descanso obrigatório é de 1 hora.
+                            </div>
+                          )}
+
                           <Button 
                             onClick={iniciarBatidaPonto} 
-                            style={{ width: '100%', height: '65px', fontSize: '18px', fontWeight: '800', borderRadius: '16px', backgroundColor: '#10b981', color: 'white', display: 'flex', justifyContent: 'center', gap: '12px', boxShadow: '0 10px 15px -3px rgba(16, 185, 129, 0.3)', transition: 'all 0.3s' }}
+                            style={{ width: '100%', height: '65px', fontSize: '18px', fontWeight: '900', borderRadius: '16px', backgroundColor: '#10b981', color: 'white', display: 'flex', justifyContent: 'center', gap: '12px', boxShadow: '0 10px 15px -3px rgba(16, 185, 129, 0.3)', transition: 'all 0.3s' }}
                           >
                             <Fingerprint size={24} /> Bater Ponto Agora
                           </Button>
@@ -408,12 +416,12 @@ export default function TerminalPontoPublico() {
                       )}
                     </div>
                   ) : (
-                    <div style={{ padding: '20px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', color: '#15803d' }}><CheckCircle2 size={32} /><strong style={{ fontSize: '16px' }}>Expediente Concluído</strong><span style={{ fontSize: '13px' }}>Bom descanso!</span></div>
+                    <div style={{ padding: '20px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', color: '#15803d' }}><CheckCircle2 size={32} /><strong style={{ fontSize: '16px' }}>Expediente Concluído</strong><span style={{ fontSize: '13px' }}>Bom descanso! O teu dia foi finalizado.</span></div>
                   )}
                   
                   {erro && (
-                    <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '12px', borderRadius: '8px', marginBottom: '15px', color: '#b45309', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
-                      <AlertCircle size={20} style={{ flexShrink: 0 }} /> <strong>{erro}</strong>
+                    <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '12px', borderRadius: '8px', marginBottom: '15px', color: '#b45309', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', lineHeight: '1.4' }}>
+                      <AlertCircle size={24} style={{ flexShrink: 0 }} /> <strong>{erro}</strong>
                     </div>
                   )}
                 </>
@@ -433,14 +441,14 @@ export default function TerminalPontoPublico() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)', padding: '20px' }}>
            <div style={{ backgroundColor: 'white', borderRadius: '24px', padding: '40px 30px', textAlign: 'center', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}>
               <div style={{ backgroundColor: '#dcfce7', width: '80px', height: '80px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto', boxShadow: '0 0 0 10px #f0fdf4' }}><CheckCircle2 size={40} color="#16a34a" /></div>
-              <h2 style={{ margin: '0 0 10px 0', color: '#1e293b', fontSize: '24px', fontWeight: '800' }}>Sucesso!</h2>
+              <h2 style={{ margin: '0 0 10px 0', color: '#1e293b', fontSize: '24px', fontWeight: '800' }}>Tudo Certo!</h2>
               <p style={{ margin: '0 0 20px 0', color: '#64748b', fontSize: '15px' }}>{sucesso.mensagem}</p>
               
               {sucesso.horaExata !== 'OK' && (
-                <div style={{ fontSize: '40px', fontWeight: '900', color: '#10b981', fontFamily: 'monospace', letterSpacing: '-1px', marginBottom: '30px', backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '16px', border: '1px solid #bbf7d0' }}>{sucesso.horaExata}</div>
+                <div style={{ fontSize: '48px', fontWeight: '900', color: '#10b981', fontFamily: 'system-ui', letterSpacing: '-2px', marginBottom: '30px', backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '16px', border: '1px solid #bbf7d0' }}>{sucesso.horaExata}</div>
               )}
               
-              <Button onClick={() => { setSucesso({ visivel: false, mensagem: '', horaExata: '' }); if(sucesso.horaExata !== 'OK'){setFuncionario(null); setMatricula(''); setLocalizacaoAtual(null);} }} style={{ width: '100%', height: '55px', fontSize: '16px', backgroundColor: '#3b82f6', borderRadius: '12px', fontWeight: 'bold' }}>Continuar</Button>
+              <Button onClick={() => { setSucesso({ visivel: false, mensagem: '', horaExata: '' }); if(sucesso.horaExata !== 'OK'){setFuncionario(null); setMatricula(''); setLocalizacaoAtual(null);} }} style={{ width: '100%', height: '55px', fontSize: '16px', backgroundColor: '#3b82f6', borderRadius: '12px', fontWeight: 'bold' }}>Terminar</Button>
            </div>
         </div>
       )}

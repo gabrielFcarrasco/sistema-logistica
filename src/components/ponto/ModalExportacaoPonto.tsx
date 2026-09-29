@@ -1,6 +1,8 @@
 // src/components/ponto/ModalExportacaoPonto.tsx
-import { X, Download, Users } from 'lucide-react';
+import { useState } from 'react';
+import { X, FileSpreadsheet, Loader2, Download } from 'lucide-react';
 import Button from '../ui/Button';
+import Input from '../ui/Input';
 import { gerarFolhaDePontoPDF } from '../../services/geradorPdfPonto';
 
 interface Props {
@@ -14,53 +16,78 @@ interface Props {
   jornadaPadrao: any;
 }
 
-export default function ModalExportacaoPonto({ 
-  aberto, onClose, mesExport, setMesExport, funcionarios, exportando, setExportando, jornadaPadrao 
+export default function ModalExportacaoPonto({
+  aberto, onClose, mesExport, setMesExport, funcionarios, exportando, setExportando, jornadaPadrao
 }: Props) {
-  
-  if (!aberto) return null;
+  const [erro, setErro] = useState('');
 
-  const handleExportar = async () => {
+  const handleExportarPDF = async () => {
+    setErro('');
     setExportando(true);
-    
+
     try {
-      // Passamos o mês, a lista inteira de funcionários e a jornada oficial
+      // Aciona o serviço unificado de geração de PDF
       await gerarFolhaDePontoPDF(mesExport, funcionarios, jornadaPadrao);
-      onClose();
-      alert("Folha de Ponto Geral exportada com sucesso!");
+      onClose(); // Fecha o modal após o sucesso
     } catch (error) {
       console.error(error);
-      alert("Houve um erro ao gerar o PDF em lote. Tente novamente.");
+      setErro('Erro ao gerar o PDF. Verifica a tua ligação à internet e tenta novamente.');
     } finally {
       setExportando(false);
     }
   };
 
+  if (!aberto) return null;
+
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)', padding: '15px' }}>
-      <div style={{ backgroundColor: 'white', width: '100%', maxWidth: '400px', borderRadius: '24px', padding: '30px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: '24px', padding: '30px', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', animation: 'fadeIn 0.3s' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: '800' }}>Exportação Geral</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px' }}><X size={20} color="#64748b" /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ backgroundColor: '#f0fdf4', padding: '10px', borderRadius: '10px' }}>
+              <FileSpreadsheet size={24} color="#16a34a" />
+            </div>
+            <h3 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: '800' }}>Exportar Folha</h3>
+          </div>
+          <button onClick={onClose} style={{ background: '#f1f5f9', border: 'none', padding: '8px', borderRadius: '50%', cursor: 'pointer' }}>
+            <X size={18} color="#475569" />
+          </button>
         </div>
 
-        <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '15px', borderRadius: '12px', marginBottom: '20px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <Users size={24} color="#16a34a" />
-          <p style={{ margin: 0, fontSize: '13px', color: '#166534', lineHeight: '1.4' }}>
-            Este processo irá gerar um único arquivo PDF contendo as folhas de ponto de <strong>todos os {funcionarios.length} funcionários</strong>, separados por página.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px' }}>
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+            Gera o documento oficial em PDF com as horas extras, atrasos e faltas de todos os colaboradores da empresa.
           </p>
+          
+          <Input 
+            label="Mês de Referência" 
+            type="month" 
+            value={mesExport} 
+            onChange={(e) => setMesExport(e.target.value)} 
+          />
+          
+          {erro && (
+            <div style={{ padding: '10px', backgroundColor: '#fef2f2', color: '#b91c1c', fontSize: '12px', borderRadius: '8px', border: '1px solid #fecaca', fontWeight: 'bold' }}>
+              {erro}
+            </div>
+          )}
         </div>
 
-        <div style={{ marginBottom: '25px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '5px' }}>Mês de Referência</label>
-          <input type="month" value={mesExport} onChange={e => setMesExport(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Button onClick={onClose} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569', border: 'none', height: '45px', fontWeight: 'bold' }}>
+            Cancelar
+          </Button>
+          <Button onClick={handleExportarPDF} disabled={exportando || !mesExport} style={{ flex: 1, backgroundColor: '#16a34a', color: 'white', border: 'none', height: '45px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+            {exportando ? <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> A Processar...</> : <><Download size={18} /> Gerar PDF</>}
+          </Button>
         </div>
 
-        <Button onClick={handleExportar} disabled={exportando} style={{ width: '100%', height: '50px', backgroundColor: '#10b981', display: 'flex', justifyContent: 'center', gap: '8px', fontWeight: 'bold' }}>
-          <Download size={18} /> {exportando ? 'Processando Lote...' : 'Gerar PDF Completo'}
-        </Button>
       </div>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }

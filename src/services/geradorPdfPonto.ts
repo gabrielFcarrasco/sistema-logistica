@@ -2,7 +2,7 @@
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { dbFolha } from './firebaseFolha';
 import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable"; 
+import "jspdf-autotable"; 
 import logoCarvalho from '../assets/logopdf.png'; 
 
 // Funções Matemáticas Auxiliares
@@ -12,12 +12,12 @@ const converterParaMinutos = (horaStr?: string) => {
   return (h * 60) + m;
 };
 
-const formatarMinutosParaHoras = (totalMinutos: number) => {
+// Formata os minutos em HH:MM sem sinais fixos (usado para controlar manualmente o + e o -)
+const formatarApenasHoras = (totalMinutos: number) => {
   if (totalMinutos === 0) return '00:00';
   const horas = Math.floor(Math.abs(totalMinutos) / 60);
   const mins = Math.abs(totalMinutos) % 60;
-  const sinal = totalMinutos > 0 ? '+' : '-';
-  return `${sinal}${String(horas).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  return `${String(horas).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 };
 
 const formatarHoraLimpa = (hora?: string) => {
@@ -30,7 +30,7 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
 
   const anoNum = parseInt(mesExport.split('-')[0]);
   const mesNum = parseInt(mesExport.split('-')[1]);
-  const diasNoMes = new Date(anoNum, mesNum, 0).getDate(); // Identifica se o mês tem 28, 30 ou 31 dias
+  const diasNoMes = new Date(anoNum, mesNum, 0).getDate();
   
   const inicioMes = `${mesExport}-01`;
   const fimMes = `${mesExport}-${String(diasNoMes).padStart(2, '0')}`;
@@ -47,16 +47,17 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
   const docPdf = new jsPDF('p', 'mm', 'a4');
   const azul = [30, 41, 59];
   const hojeString = new Date().toISOString().split('T')[0];
+  const FERIADOS_SP = ['01-01', '01-25', '04-21', '05-01', '07-09', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
 
   for (let i = 0; i < funcionarios.length; i++) {
     const funcionarioAtual = funcionarios[i];
     const registrosDoFuncionario = todosRegistrosBanco.filter(r => r.funcionarioId === funcionarioAtual.id);
 
-    let saldoTotalMesMinutos = 0;
+    let totalExtrasMinutos = 0;
+    let totalAtrasosMinutos = 0;
     let totalFaltas = 0;
     let totalDiasTrabalhados = 0;
     const tableData: any[] = [];
-    
     const assinaturasMap: Record<string, string> = {}; 
 
     for (let dia = 1; dia <= diasNoMes; dia++) {
@@ -65,6 +66,11 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
       const diaSemana = dataObj.getDay(); 
       
       const dataPt = dataObj.toLocaleDateString('pt-BR');
+      const dataIsoFormatada = dataObj.toLocaleDateString('pt-BR', { weekday: 'short' }).toUpperCase();
+      const isFimDeSemana = diaSemana === 0 || diaSemana === 6;
+      const isFeriado = FERIADOS_SP.includes(`${String(mesNum).padStart(2, '0')}-${String(dia).padStart(2, '0')}`);
+      const isAntesDaContratacao = funcionarioAtual.dataContratacao && dataAtualStr < funcionarioAtual.dataContratacao;
+
       const registroDia = registrosDoFuncionario.find(r => r.data === dataAtualStr);
 
       let entrada = '--:--';
@@ -72,38 +78,36 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
       let retorno = '--:--';
       let saidaFim = '--:--';
       let status = '';
-      let textAssinatura = '-'; 
+      let saldoExtraStr = '--';
+      let saldoAtrasoStr = '--';
 
-      if (registroDia) {
+      if (registroDia?.assinatura && registroDia.assinatura.startsWith('data:image')) {
+        assinaturasMap[dataPt] = registroDia.assinatura;
+      }
+
+      if (isAntesDaContratacao) {
+        status = 'Pré-Contrato';
+      } else if (registroDia) {
         entrada = formatarHoraLimpa(registroDia.entrada1);
         saidaAlmoco = formatarHoraLimpa(registroDia.saida1);
         retorno = formatarHoraLimpa(registroDia.entrada2);
         saidaFim = formatarHoraLimpa(registroDia.saida2);
 
-        if (registroDia.assinatura && registroDia.assinatura.startsWith('data:image')) {
-            assinaturasMap[dataPt] = registroDia.assinatura;
-            textAssinatura = ' '; 
-        } else if (registroDia.entrada1) {
-            textAssinatura = 'Pendente';
-        }
-
         const minutosEsperados = converterParaMinutos(registroDia.cargaHorariaPrevista || jornadaPadrao.cargaHoraria);
 
         if (registroDia.statusDia === 'Falta') {
-          status = 'FALTA';
+          status = 'Falta';
           totalFaltas++;
-          saldoTotalMesMinutos -= minutosEsperados;
-        } else if (registroDia.statusDia === 'Falta Justificada' || registroDia.statusDia === 'Atestado Médico') {
-          status = registroDia.statusDia.toUpperCase();
+        } else if (['Atestado Médico', 'Falta Justificada', 'Férias', 'Licença', 'Comprovante de Horas', 'Acordo (Pago/Abonado)'].includes(registroDia.statusDia)) {
+          status = registroDia.statusDia;
         } else {
-          
           const e1 = converterParaMinutos(registroDia.entrada1);
           const s1 = converterParaMinutos(registroDia.saida1);
           const e2 = converterParaMinutos(registroDia.entrada2);
           const s2 = converterParaMinutos(registroDia.saida2);
 
           const batidasValidas = [e1, s1, e2, s2].filter(t => t > 0);
-          const diaPassado = registroDia.data < hojeString;
+          const diaPassado = dataAtualStr < hojeString;
           const temSaidaFinal = registroDia.saida2 && registroDia.saida2 !== '--:--';
           
           if (!diaPassado && !temSaidaFinal) {
@@ -117,110 +121,140 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
             }
             
             const diferenca = minsTrabalhados - minutosEsperados;
-            
-            if (Math.abs(diferenca) <= 10) {
-              status = 'Jornada OK';
+            if (diferenca > 10) {
+              totalExtrasMinutos += diferenca;
+              saldoExtraStr = `+ ${formatarApenasHoras(diferenca)}`;
+            } else if (diferenca < -10) {
+              totalAtrasosMinutos += Math.abs(diferenca);
+              saldoAtrasoStr = `- ${formatarApenasHoras(Math.abs(diferenca))}`;
             } else {
-              status = `BH: ${formatarMinutosParaHoras(diferenca)}`;
-              saldoTotalMesMinutos += diferenca;
+              status = 'Jornada OK';
             }
             totalDiasTrabalhados++;
           }
         }
       } else {
-        if (diaSemana === 0) {
-          status = 'DOMINGO';
-        } else if (diaSemana === 6) {
-          status = 'SÁBADO';
+        if (isFeriado) status = 'Feriado';
+        else if (diaSemana === 0) status = 'DSR';
+        else if (isFimDeSemana) status = 'Folga/FDS';
+        else if (dataAtualStr < hojeString) {
+          status = 'Falta';
+          totalFaltas++;
         } else {
-          const hojeObj = new Date();
-          hojeObj.setHours(0,0,0,0);
-          status = dataObj < hojeObj ? 'Sem Registro' : '-';
+          status = '-';
         }
       }
 
-      tableData.push([ dataPt, entrada, saidaAlmoco, retorno, saidaFim, status, textAssinatura ]);
+      tableData.push([ dataPt, dataIsoFormatada, entrada, saidaAlmoco, retorno, saidaFim, saldoExtraStr, saldoAtrasoStr, status, '' ]);
     }
 
-    try { docPdf.addImage(logoCarvalho, 'PNG', 14, 10, 35, 12); } catch (e) {}
+    try { docPdf.addImage(logoCarvalho, 'PNG', 14, 10, 30, 10); } catch (e) {}
 
     docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(14); docPdf.setTextColor(azul[0], azul[1], azul[2]);
-    docPdf.text("FOLHA DE PONTO MENSAL", 105, 16, { align: 'center' });
-    docPdf.setFontSize(10); docPdf.setTextColor(100);
+    docPdf.text("FOLHA DE PONTO INDIVIDUAL", 105, 15, { align: 'center' });
+    docPdf.setFontSize(9); docPdf.setTextColor(100);
     docPdf.text(`Período: 01/${String(mesNum).padStart(2, '0')}/${anoNum} a ${diasNoMes}/${String(mesNum).padStart(2, '0')}/${anoNum}`, 105, 22, { align: 'center' });
 
     docPdf.setDrawColor(200); docPdf.setFillColor(248, 250, 252);
-    docPdf.rect(14, 28, 182, 18, "FD");
+    docPdf.rect(14, 26, 182, 18, "FD");
     docPdf.setFontSize(9); docPdf.setTextColor(0);
-    docPdf.setFont("helvetica", "bold"); docPdf.text("Colaborador:", 18, 34); docPdf.setFont("helvetica", "normal"); docPdf.text(funcionarioAtual.nome.toUpperCase(), 42, 34);
-    docPdf.setFont("helvetica", "bold"); docPdf.text("Matrícula:", 18, 40); docPdf.setFont("helvetica", "normal"); docPdf.text(funcionarioAtual.matricula, 38, 40);
-    docPdf.setFont("helvetica", "bold"); docPdf.text("Empresa:", 120, 34); docPdf.setFont("helvetica", "normal"); docPdf.text("CARVALHO PINTURA E MONTAGEM", 138, 34);
+    docPdf.setFont("helvetica", "bold"); docPdf.text("Colaborador:", 18, 32); docPdf.setFont("helvetica", "normal"); docPdf.text(funcionarioAtual.nome.toUpperCase(), 42, 32);
+    docPdf.setFont("helvetica", "bold"); docPdf.text("Matrícula:", 18, 38); docPdf.setFont("helvetica", "normal"); docPdf.text(String(funcionarioAtual.matricula || ''), 38, 38);
+    
+    const dataAdmissao = funcionarioAtual.dataContratacao ? funcionarioAtual.dataContratacao.split('-').reverse().join('/') : 'Não informada';
+    docPdf.setFont("helvetica", "bold"); docPdf.text("Admissão:", 120, 32); docPdf.setFont("helvetica", "normal"); docPdf.text(dataAdmissao, 138, 32);
+    docPdf.setFont("helvetica", "bold"); docPdf.text("Empresa:", 120, 38); docPdf.setFont("helvetica", "normal"); docPdf.text("CARVALHO PINTURA E MONTAGEM", 138, 38);
 
-    const renderTable = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
-
-    // 📏 AJUSTE DE LAYOUT: O segredo está no 'cellPadding: 1.5'. Ele garante que até 31 linhas caibam com folga!
-    renderTable(docPdf, {
-      startY: 48,
-      head: [["Data", "Entrada", "Saída Alm.", "Retorno", "Saída Final", "Saldo / Status", "Assinatura"]],
+    (docPdf as any).autoTable({
+      startY: 46,
+      head: [["Data", "Dia", "Entrada", "Saída Alm.", "Retorno", "Saída Final", "Extra (+)", "Atraso (-)", "Status / Ocorrência", "Assinatura"]],
       body: tableData,
       theme: 'grid',
       styles: { fontSize: 7, cellPadding: 1.5, halign: 'center', textColor: 40 }, 
       headStyles: { fillColor: azul, textColor: 255, fontSize: 7 },
       columnStyles: { 
-        0: { cellWidth: 20, fontStyle: 'bold' }, 
-        5: { halign: 'left', cellWidth: 35 }, 
-        6: { cellWidth: 25 } 
+        0: { cellWidth: 18, fontStyle: 'bold' }, 
+        1: { cellWidth: 12 },
+        6: { textColor: [22, 101, 52], fontStyle: 'bold' },
+        7: { textColor: [153, 27, 27], fontStyle: 'bold' },
+        8: { halign: 'left', cellWidth: 32 }, 
+        9: { cellWidth: 22 } 
       },
       didParseCell: function(data: any) {
-        if (data.section === 'body' && (data.row.raw[5] === 'SÁBADO' || data.row.raw[5] === 'DSR (Domingo)')) {
-          data.cell.styles.fillColor = [241, 245, 249];
+        if (data.section === 'body') {
+          const statusCell = data.row.raw[8] as string;
+          if (statusCell === 'Falta') {
+            data.cell.styles.fillColor = [254, 226, 226];
+            data.cell.styles.textColor = [153, 27, 27];
+          } else if (['DSR', 'Folga/FDS', 'Feriado'].includes(statusCell)) {
+            data.cell.styles.fillColor = [241, 245, 249];
+            data.cell.styles.textColor = [71, 85, 105];
+          } else if (['Atestado Médico', 'Férias', 'Licença'].includes(statusCell)) {
+            data.cell.styles.fillColor = [254, 252, 232];
+            data.cell.styles.textColor = [133, 77, 14];
+          } else if (statusCell === 'Pré-Contrato') {
+            data.cell.styles.fillColor = [226, 232, 240];
+            data.cell.styles.textColor = [148, 163, 184];
+          }
         }
       },
       didDrawCell: function(data: any) {
-        if (data.section === 'body' && data.column.index === 6) {
+        if (data.section === 'body' && data.column.index === 9) {
            const dataDaLinha = data.row.raw[0]; 
-           const base64DaAssinatura = assinaturasMap[dataDaLinha]; 
-           
+           const base64DaAssinatura = assinaturasMap[dataDaLinha];
            if (base64DaAssinatura) {
               try {
-                // 📏 AJUSTE DE LAYOUT: Altura da imagem ajustada para 4mm para caber na nova linha mais fina sem quebrar o layout
-                docPdf.addImage(base64DaAssinatura, 'PNG', data.cell.x + 2, data.cell.y + 0.5, 20, 4);
-              } catch (e) {
-                console.error("Erro ao desenhar assinatura na data: " + dataDaLinha);
-              }
+                docPdf.addImage(base64DaAssinatura, 'PNG', data.cell.x + 1, data.cell.y + 0.5, 20, 4);
+              } catch (e) {}
            }
         }
       }
     });
 
-    const finalY = (docPdf as any).lastAutoTable.finalY + 8;
+    const finalY = (docPdf as any).lastAutoTable.finalY + 6;
     
-    // 📏 AJUSTE DE LAYOUT: Caixa de resumo preservada, mas sem linhas extras de assinatura abaixo dela.
+    // Caixa de Resumo Mensal Otimizada
     docPdf.setFillColor(241, 245, 249);
     docPdf.rect(14, finalY, 182, 22, "F");
     
+    // Esquerda: Informações gerais de dias e faltas
     docPdf.setFontSize(9); docPdf.setFont("helvetica", "bold");
-    docPdf.text("RESUMO MENSAL:", 18, finalY + 6);
+    docPdf.text("RESUMO MENSAL:", 18, finalY + 7);
     
     docPdf.setFontSize(8); docPdf.setFont("helvetica", "normal");
-    docPdf.text(`Dias Trabalhados: ${totalDiasTrabalhados}`, 18, finalY + 12);
-    docPdf.text(`Faltas: ${totalFaltas}`, 18, finalY + 18);
+    docPdf.text(`Dias Trabalhados: ${totalDiasTrabalhados}`, 18, finalY + 14);
+    docPdf.text(`Faltas Acumuladas: ${totalFaltas}`, 18, finalY + 18);
 
-    docPdf.setFontSize(10); docPdf.setFont("helvetica", "bold");
-    docPdf.text("SALDO DO BANCO DE HORAS:", 110, finalY + 13);
+    // Direita: Atrasos em cima e Horas Extras em verde logo abaixo (Corrigido para evitar sinal duplo)
+    docPdf.setFontSize(8); docPdf.setFont("helvetica", "bold");
+    docPdf.text("ATRASOS / DÉBITO:", 115, finalY + 8);
     
-    const corSaldo = saldoTotalMesMinutos >= 0 ? [22, 163, 74] : [220, 38, 38];
-    docPdf.setTextColor(corSaldo[0], corSaldo[1], corSaldo[2]);
-    docPdf.setFontSize(12);
-    docPdf.text(formatarMinutosParaHoras(saldoTotalMesMinutos), 170, finalY + 13);
+    docPdf.setTextColor(185, 28, 28); // Vermelho
+    docPdf.setFontSize(10);
+    docPdf.text(`- ${formatarApenasHoras(totalAtrasosMinutos)}`, 165, finalY + 8);
     docPdf.setTextColor(0);
 
-    // As linhas físicas de assinatura do rodapé foram completamente REMOVIDAS daqui!
+    docPdf.setFontSize(8); docPdf.setFont("helvetica", "bold");
+    docPdf.text("HORAS EXTRAS:", 115, finalY + 16);
+    
+    docPdf.setTextColor(22, 163, 74); // Verde destacado
+    docPdf.setFontSize(10);
+    docPdf.text(`+ ${formatarApenasHoras(totalExtrasMinutos)}`, 165, finalY + 16);
+    docPdf.setTextColor(0);
 
     if (i < funcionarios.length - 1) {
       docPdf.addPage();
     }
   }
 
-  docPdf.save(`Folhas_de_Ponto_Geral_${mesExport}.pdf`);
+  docPdf.save(`Folha_de_Ponto_Geral_${mesExport}.pdf`);
+};
+
+export const gerarRelatorioPontoMensal = async (
+  funcionarios: any[],
+  _registrosMes: any[],
+  mesAnoFiltro: string,
+  jornadaPadrao: any
+) => {
+  return gerarFolhaDePontoPDF(mesAnoFiltro, funcionarios, jornadaPadrao);
 };
