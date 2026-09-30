@@ -282,12 +282,12 @@ export default function TerminalPontoPublico() {
             <form onSubmit={buscarFuncionario} style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.5s' }}>
               <div style={{ textAlign: 'center', marginBottom: '10px' }}>
                 <div style={{ width: '60px', height: '60px', backgroundColor: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px auto' }}><Fingerprint size={32} color="#3b82f6" /></div>
-                <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '20px', fontWeight: '800' }}>Olá, Equipa!</h3>
-                <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Insere a tua matrícula para avançar.</p>
+                <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '20px', fontWeight: '800' }}>Olá, Colaborador!</h3>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Insira sua matrícula para continuar.</p>
               </div>
 
               <div>
-                <Input label="" value={matricula} onChange={e => setMatricula(e.target.value)} type="number" placeholder="A tua Matrícula (Ex: 1001)" style={{ textAlign: 'center', fontSize: '18px', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', backgroundColor: '#f8fafc' }} />
+                <Input label="" value={matricula} onChange={e => setMatricula(e.target.value)} type="number" placeholder="Sua Matrícula (Ex: 01)" style={{ textAlign: 'center', fontSize: '18px', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', backgroundColor: '#f8fafc' }} />
               </div>
               
               {erro && (
@@ -360,7 +360,7 @@ export default function TerminalPontoPublico() {
                             <MapPin size={18} color="#3b82f6" /> Localização Exigida
                           </h4>
                           <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 15px 0', lineHeight: '1.4' }}>
-                            Confirma a tua presença capturando o local onde te encontras neste momento.
+                            Confirma sua presença capturando o local onde te encontras neste momento.
                           </p>
 
                           <Button 

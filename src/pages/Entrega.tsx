@@ -6,7 +6,7 @@ import { db } from '../services/firebase';
 
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { ClipboardSignature, CheckCircle2, AlertCircle, PenTool, Plus, ShoppingCart, Trash2, Shirt, UserCheck, HardHat, Building2, Smartphone, Calendar, AlertTriangle, Copy } from 'lucide-react';
+import { ClipboardSignature, CheckCircle2, AlertCircle, PenTool, Plus, ShoppingCart, Trash2, Shirt, UserCheck, HardHat, Building2, Smartphone, Calendar, AlertTriangle, Copy, CalendarDays, Zap } from 'lucide-react';
 
 import ModalJustificativa from '../components/entrega/ModalJustificativa';
 import ModalAssinaturaEntrega from '../components/entrega/ModalAssinaturaEntrega';
@@ -15,11 +15,18 @@ interface ItemCarrinho {
   id: string; nome: string; quantidade: number; durabilidade: number;
   justificativa?: string; isPendencia?: boolean; pendenciaId?: string;
   isExterno?: boolean; caExterno?: string; nomeOriginalExterno?: string;
+  // 🚀 NOVO: Adicionado array de dias para o Lote Mensal
+  diasLote?: number[]; 
 }
 
 export default function Entrega() {
   const { setorAtivo } = useOutletContext<{ setorAtivo: string }>();
   
+  // 🚀 NOVO: Controle de Modos
+  const [modo, setModo] = useState<'padrao' | 'lote'>('padrao');
+  const [mesLote, setMesLote] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  const [diasInput, setDiasInput] = useState(''); // Dias digitados: "10, 15, 20"
+
   const [recebedores, setRecebedores] = useState<any[]>([]); 
   const [estoque, setEstoque] = useState<any[]>([]);
   const [recebedorSelecionado, setRecebedorSelecionado] = useState('');
@@ -59,8 +66,9 @@ export default function Entrega() {
       });
     });
     
+    // 🚀 ATUALIZADO: Pega todo o estoque sem filtrar quantidade > 0 na consulta. Filtraremos na renderização.
     const unsubEstoque = onSnapshot(query(collection(db, 'estoque'), where('setorId', '==', setorAtivo)), (snap) => {
-      const itensFiltrados = snap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter(i => i.quantidade > 0 && i.categoria?.toLowerCase() !== 'pintura'); 
+      const itensFiltrados = snap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter(i => i.categoria?.toLowerCase() !== 'pintura'); 
       setEstoque(itensFiltrados);
     });
 
@@ -128,14 +136,21 @@ export default function Entrega() {
     if (!recebedorSelecionado) return avisar("Selecione o recebedor.", "erro");
     if (Number(quantidadeDesejada) <= 0) return avisar("A quantidade deve ser maior que zero.", "erro");
     
+    // 🚀 Lógica de Dias para o Lote Mensal
+    let diasParsed: number[] = [];
+    if (modo === 'lote') {
+      diasParsed = diasInput.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d > 0 && d <= 31);
+      if (diasParsed.length === 0) return avisar("Informe os dias de entrega corretamente.", "erro");
+    }
+
     if (origemEpi === 'externo') {
       if (!nomeExterno.trim()) return avisar("Digite o nome do EPI do cliente.", "erro");
       
       setCarrinho([...carrinho, {
-        id: `ext-${Date.now()}`, nome: `[HYUNDAI] ${nomeExterno}`, quantidade: Number(quantidadeDesejada) || 1, durabilidade: Number(durabilidadeManual) || 0, isExterno: true, caExterno: caExterno, nomeOriginalExterno: nomeExterno
+        id: `ext-${Date.now()}`, nome: `[EXTERNO] ${nomeExterno}`, quantidade: Number(quantidadeDesejada) || 1, durabilidade: Number(durabilidadeManual) || 0, isExterno: true, caExterno: caExterno, nomeOriginalExterno: nomeExterno, diasLote: modo === 'lote' ? diasParsed : undefined
       }]);
       
-      setNomeExterno(''); setCaExterno(''); setQuantidadeDesejada('1'); setDurabilidadeManual('');
+      setNomeExterno(''); setCaExterno(''); setQuantidadeDesejada('1'); setDurabilidadeManual(''); setDiasInput('');
       return;
     }
 
@@ -144,7 +159,10 @@ export default function Entrega() {
     const durabilidadeDesejada = Number(durabilidadeManual) || 0;
     const selecao = recebedores.find(r => r.id === recebedorSelecionado);
 
-    if (selecao?.tipo === 'socio') return adicionarAoCarrinho(itemData, durabilidadeDesejada);
+    // No modo Lote, saltamos a verificação rigorosa de troca antecipada, pois é um espelho do passado
+    if (selecao?.tipo === 'socio' || modo === 'lote') {
+      return adicionarAoCarrinho(itemData, durabilidadeDesejada, undefined, false, undefined, diasParsed);
+    }
 
     try {
       const q = query(collection(db, 'entregas'), where('funcionarioId', '==', recebedorSelecionado), where('itemId', '==', itemSelecionado));
@@ -174,12 +192,12 @@ export default function Entrega() {
     } catch (error) { adicionarAoCarrinho(itemData, durabilidadeDesejada); }
   };
 
-  const adicionarAoCarrinho = (itemData: any, dur: number, just?: string, isPendencia = false, pendId?: string) => {
+  const adicionarAoCarrinho = (itemData: any, dur: number, just?: string, isPendencia = false, pendId?: string, diasParsed?: number[]) => {
     setCarrinho([...carrinho, { 
       id: itemData.id || `p-${Date.now()}`, nome: itemData.nome || itemData.itemNome, 
-      quantidade: isPendencia ? 1 : (Number(quantidadeDesejada) || 1), durabilidade: dur, justificativa: just, isPendencia, pendenciaId: pendId
+      quantidade: isPendencia ? 1 : (Number(quantidadeDesejada) || 1), durabilidade: dur, justificativa: just, isPendencia, pendenciaId: pendId, diasLote: diasParsed
     }]);
-    setItemSelecionado(''); setDurabilidadeManual(''); setQuantidadeDesejada('1');
+    setItemSelecionado(''); setDurabilidadeManual(''); setQuantidadeDesejada('1'); setDiasInput('');
     setItemPendenteJustificativa(null);
   };
 
@@ -193,36 +211,45 @@ export default function Entrega() {
       const selecao = recebedores.find(r => r.id === recebedorSelecionado);
       const loteUnicoId = `LOTE-${Date.now()}`;
 
+      // Configuração da data base
       const partesData = dataEntrega.split('-');
-      const dataReal = new Date(Number(partesData[0]), Number(partesData[1]) - 1, Number(partesData[2]), 12, 0, 0);
+      const dataRealPadrao = new Date(Number(partesData[0]), Number(partesData[1]) - 1, Number(partesData[2]), 12, 0, 0);
+      const [anoLote, mesLoteNum] = mesLote.split('-').map(Number);
 
       for (const item of carrinho) {
         if (item.isExterno) {
           const existe = episExternosSugeridos.find(e => e.nome.toLowerCase() === item.nomeOriginalExterno?.toLowerCase());
-          if (!existe) {
-            await addDoc(collection(db, 'epis_externos'), { nome: item.nomeOriginalExterno, ca: item.caExterno || '' });
-          }
+          if (!existe) await addDoc(collection(db, 'epis_externos'), { nome: item.nomeOriginalExterno, ca: item.caExterno || '' });
         }
 
-        await addDoc(collection(db, 'entregas'), {
-          setorId: setorAtivo, 
-          funcionarioId: recebedorSelecionado, 
-          funcionarioNome: selecao.nome,
-          itemId: item.id, 
-          itemNome: item.nome, 
-          quantidade: item.quantidade, 
-          durabilidade: item.durabilidade,
-          ca: item.isExterno ? (item.caExterno || '') : '', 
-          origem: item.isExterno ? 'externa_cliente' : 'estoque_interno',
-          justificativa: item.justificativa || (item.isExterno ? "EPI Cedido pelo Cliente" : "Retirada Normal"),
-          assinatura: metodo === 'local' ? assinaturaBase64 : 'pendente',
-          loteId: loteUnicoId, 
-          dataHora: dataReal,
-          horarioEntrega: horarioAgora, 
-          recebedorTipo: selecao.tipo
-        });
+        // 🚀 LOOP DE GRAVAÇÃO: Processa cada data
+        const datasParaGravar = (modo === 'lote' && item.diasLote && item.diasLote.length > 0) 
+            ? item.diasLote.map(dia => new Date(anoLote, mesLoteNum - 1, dia, 12, 0, 0)) 
+            : [dataRealPadrao];
 
-        if (!item.isExterno) {
+        for (const dataParaGravar of datasParaGravar) {
+          await addDoc(collection(db, 'entregas'), {
+            setorId: setorAtivo, 
+            funcionarioId: recebedorSelecionado, 
+            funcionarioNome: selecao.nome,
+            itemId: item.id, 
+            itemNome: item.nome, 
+            quantidade: item.quantidade, // Quantidade PER DIA
+            durabilidade: item.durabilidade,
+            ca: item.isExterno ? (item.caExterno || '') : '', 
+            origem: item.isExterno ? 'externa_cliente' : 'estoque_interno',
+            justificativa: modo === 'lote' ? "Ficha de Entrega Mensal (Retroativa)" : (item.justificativa || (item.isExterno ? "EPI Cedido pelo Cliente" : "Retirada Normal")),
+            assinatura: metodo === 'local' ? assinaturaBase64 : 'pendente',
+            loteId: loteUnicoId, 
+            dataHora: dataParaGravar,
+            horarioEntrega: horarioAgora, 
+            recebedorTipo: selecao.tipo,
+            isLoteMensal: modo === 'lote'
+          });
+        }
+
+        // 🚀 ATUALIZAÇÃO DO ESTOQUE (Apenas no Modo Padrão)
+        if (!item.isExterno && modo === 'padrao') {
           if (item.isPendencia && item.pendenciaId) {
             await updateDoc(doc(db, 'entregas_pendentes', item.pendenciaId), { status: 'entregue', entregueEm: serverTimestamp() });
           } else {
@@ -257,21 +284,16 @@ export default function Entrega() {
     avisar("Link de assinatura copiado para a área de transferência!");
   };
 
-  // 🧠 INTELIGÊNCIA: Função para Excluir o Lote Pendente Inteiro
   const excluirLotePendente = async (loteId: string) => {
     const confirmacao = window.confirm("Tem certeza que deseja excluir esta entrega? Todos os registos deste lote serão apagados.");
     if (!confirmacao) return;
 
     setSalvando(true);
     try {
-      // 1. Procura todas as entregas registadas com este loteId
       const q = query(collection(db, 'entregas'), where('loteId', '==', loteId));
       const snap = await getDocs(q);
-      
-      // 2. Apaga cada documento encontrado
       const deletePromises = snap.docs.map(d => deleteDoc(doc(db, 'entregas', d.id)));
       await Promise.all(deletePromises);
-      
       avisar("Entrega pendente excluída com sucesso!");
     } catch (error) {
       console.error(error);
@@ -279,6 +301,9 @@ export default function Entrega() {
     }
     setSalvando(false);
   };
+
+  // Prepara o estoque que vai ser renderizado (Padrão: apenas Qtd > 0 | Lote: Todos)
+  const estoqueRenderizado = estoque.filter(item => modo === 'lote' || item.quantidade > 0);
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '15px' }}>
@@ -293,6 +318,22 @@ export default function Entrega() {
         <ClipboardSignature color="var(--cor-primaria)" /> Entrega de EPI
       </h1>
 
+      {/* 🚀 NOVO: Seletor de Modo de Entrega */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <button 
+          onClick={() => { setModo('padrao'); setCarrinho([]); }}
+          style={{ flex: 1, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '8px', fontWeight: 'bold', fontSize: '14px', border: modo === 'padrao' ? '2px solid #3b82f6' : '1px solid #e2e8f0', backgroundColor: modo === 'padrao' ? '#eff6ff' : 'white', color: modo === 'padrao' ? '#1d4ed8' : '#64748b', cursor: 'pointer', transition: '0.2s' }}
+        >
+          <Zap size={18}/> Entrega Diária Padrão (Baixa Estoque)
+        </button>
+        <button 
+          onClick={() => { setModo('lote'); setCarrinho([]); }}
+          style={{ flex: 1, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '8px', fontWeight: 'bold', fontSize: '14px', border: modo === 'lote' ? '2px solid #f59e0b' : '1px solid #e2e8f0', backgroundColor: modo === 'lote' ? '#fffbeb' : 'white', color: modo === 'lote' ? '#b45309' : '#64748b', cursor: 'pointer', transition: '0.2s' }}
+        >
+          <CalendarDays size={18}/> Ficha Mensal de Lote (Sem Baixa)
+        </button>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
@@ -306,19 +347,26 @@ export default function Entrega() {
                 </select>
               </div>
               <div>
-                <label style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>
-                  <Calendar size={14}/> DATA
-                </label>
-                <input 
-                  type="date" 
-                  value={dataEntrega} 
-                  onChange={e => setDataEntrega(e.target.value)}
-                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', outline: 'none', backgroundColor: 'white' }}
-                />
+                {/* 🚀 Renderização Dinâmica Data vs Mês Referência */}
+                {modo === 'padrao' ? (
+                  <>
+                    <label style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#475569', fontSize: '13px' }}>
+                      <Calendar size={14}/> DATA
+                    </label>
+                    <input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', outline: 'none', backgroundColor: 'white' }} />
+                  </>
+                ) : (
+                  <>
+                    <label style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#b45309', fontSize: '13px' }}>
+                      <CalendarDays size={14}/> MÊS REF.
+                    </label>
+                    <input type="month" value={mesLote} onChange={e => setMesLote(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '2px solid #fde68a', outline: 'none', backgroundColor: '#fffbeb', color: '#b45309', fontWeight: 'bold' }} />
+                  </>
+                )}
               </div>
             </div>
 
-            {pendenciasFuncionario.length > 0 && (
+            {pendenciasFuncionario.length > 0 && modo === 'padrao' && (
               <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9a3412', marginBottom: '10px' }}>
                   <Shirt size={20} /> <strong style={{fontSize: '12px'}}>UNIFORME(S) DISPONÍVEL!</strong>
@@ -347,7 +395,7 @@ export default function Entrega() {
             {origemEpi === 'interno' ? (
               <select value={itemSelecionado} onChange={e => setItemSelecionado(e.target.value)} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', marginBottom: '15px', outline: 'none' }}>
                 <option value="">Buscar material no estoque da Carvalho...</option>
-                {estoque.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.quantidade} em estoque)</option>)}
+                {estoqueRenderizado.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.quantidade} em estoque)</option>)}
               </select>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginBottom: '15px' }}>
@@ -363,9 +411,21 @@ export default function Entrega() {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-              <div style={{ flex: '1' }}><Input label="Qtd" type="number" value={quantidadeDesejada} onChange={e => setQuantidadeDesejada(e.target.value)} /></div>
-              <div style={{ flex: '1.5' }}><Input label="Durabilidade" type="number" value={durabilidadeManual} onChange={e => setDurabilidadeManual(e.target.value)} placeholder="Dias" /></div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1', minWidth: '80px' }}>
+                <Input label={modo === 'lote' ? "Qtd/Dia" : "Qtd"} type="number" value={quantidadeDesejada} onChange={e => setQuantidadeDesejada(e.target.value)} />
+              </div>
+              <div style={{ flex: '1.5', minWidth: '100px' }}>
+                <Input label="Durabilidade" type="number" value={durabilidadeManual} onChange={e => setDurabilidadeManual(e.target.value)} placeholder="Dias" />
+              </div>
+              
+              {/* 🚀 Campo Exclusivo para os Múltiplos Dias */}
+              {modo === 'lote' && (
+                <div style={{ flex: '2', minWidth: '150px' }}>
+                  <Input label="Dias Entregues" type="text" value={diasInput} onChange={e => setDiasInput(e.target.value)} placeholder="Ex: 08, 13, 23, 30" />
+                </div>
+              )}
+              
               <Button onClick={verificarEAdicionar} style={{ backgroundColor: origemEpi === 'interno' ? '#3b82f6' : '#8b5cf6', height: '48px', padding: '0 20px', flexShrink: 0 }}><Plus size={24} /></Button>
             </div>
           </div>
@@ -379,11 +439,16 @@ export default function Entrega() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {carrinho.map((item, idx) => (
-                  <div key={idx} style={{ padding: '12px', border: item.isExterno ? '1px solid #c4b5fd' : '1px solid #e2e8f0', backgroundColor: item.isExterno ? '#faf5ff' : (item.justificativa ? '#fff7ed' : '#ffffff'), borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div key={idx} style={{ padding: '12px', border: item.isExterno ? '1px solid #c4b5fd' : (item.diasLote ? '1px solid #fcd34d' : '1px solid #e2e8f0'), backgroundColor: item.isExterno ? '#faf5ff' : (item.diasLote ? '#fffbeb' : (item.justificativa ? '#fff7ed' : '#ffffff')), borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <strong style={{ fontSize: '14px', display: 'block', color: item.isExterno ? '#6d28d9' : '#1e293b' }}>{item.nome} (x{item.quantidade})</strong>
+                      <strong style={{ fontSize: '14px', display: 'block', color: item.isExterno ? '#6d28d9' : (item.diasLote ? '#b45309' : '#1e293b') }}>
+                        {item.nome} {item.diasLote ? `(x${item.quantidade} por dia)` : `(x${item.quantidade})`}
+                      </strong>
                       <span style={{ fontSize: '12px', color: item.justificativa ? '#ea580c' : '#64748b', display: 'block', marginTop: '2px' }}>
-                        {item.justificativa ? `⚠️ Motivo: ${item.justificativa}` : `Dura aprox: ${item.durabilidade} dias`}
+                        {item.diasLote ? 
+                          <span style={{ fontWeight: 'bold' }}>Dias do Lote: {item.diasLote.join(', ')}</span> 
+                          : (item.justificativa ? `⚠️ Motivo: ${item.justificativa}` : `Dura aprox: ${item.durabilidade} dias`)
+                        }
                         {item.isExterno && item.caExterno && ` | C.A: ${item.caExterno}`}
                       </span>
                     </div>
@@ -450,20 +515,11 @@ export default function Entrega() {
                         <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b' }}>{lote.funcionarioNome}</strong>
                         <span style={{ fontSize: '11px', color: '#64748b' }}>Registado em: {lote.dataHora.toLocaleDateString('pt-BR')}</span>
                       </div>
-                      
-                      {/* ✨ AQUI: Novos botões lado a lado (Copiar e Excluir) */}
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button 
-                          onClick={() => copiarLinkPendente(lote.loteId)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#3b82f6', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
-                        >
+                        <button onClick={() => copiarLinkPendente(lote.loteId)} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#3b82f6', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
                           <Copy size={12} /> Copiar
                         </button>
-                        <button 
-                          onClick={() => excluirLotePendente(lote.loteId)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
-                          title="Excluir Lote"
-                        >
+                        <button onClick={() => excluirLotePendente(lote.loteId)} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }} title="Excluir Lote">
                           <Trash2 size={12} /> Excluir
                         </button>
                       </div>
@@ -474,21 +530,11 @@ export default function Entrega() {
               </div>
             </div>
           )}
-
         </div>
       </div>
 
-      <ModalJustificativa 
-        item={itemPendenteJustificativa} 
-        onClose={() => setItemPendenteJustificativa(null)} 
-        onConfirm={(just) => adicionarAoCarrinho(itemPendenteJustificativa, itemPendenteJustificativa.dur, just)} 
-      />
-
-      <ModalAssinaturaEntrega 
-        aberto={modalAssinaturaAberto} 
-        onClose={() => setModalAssinaturaAberto(false)} 
-        onConfirm={(base64) => { setAssinaturaBase64(base64); setModalAssinaturaAberto(false); }} 
-      />
+      <ModalJustificativa item={itemPendenteJustificativa} onClose={() => setItemPendenteJustificativa(null)} onConfirm={(just) => adicionarAoCarrinho(itemPendenteJustificativa, itemPendenteJustificativa.dur, just)} />
+      <ModalAssinaturaEntrega aberto={modalAssinaturaAberto} onClose={() => setModalAssinaturaAberto(false)} onConfirm={(base64) => { setAssinaturaBase64(base64); setModalAssinaturaAberto(false); }} />
 
     </div>
   );

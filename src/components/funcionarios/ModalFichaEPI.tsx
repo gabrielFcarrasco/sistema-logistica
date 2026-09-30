@@ -10,7 +10,7 @@ interface Props {
   aberto: boolean;
   funcionario: any;
   entregas: any[];
-  estoque?: any[]; // Propriedade crucial para buscar o C.A.
+  estoque?: any[]; 
   onClose: () => void;
   avisar: (msg: string, tipo?: 'sucesso' | 'erro') => void;
 }
@@ -18,16 +18,13 @@ interface Props {
 export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque = [], onClose, avisar }: Props) {
   const [gerando, setGerando] = useState(false);
 
-  // Mês padrão: Mês corrente
   const dataAtual = new Date();
   const mesAtualFormatado = `${dataAtual.getFullYear()}-${String(dataAtual.getMonth() + 1).padStart(2, '0')}`;
   const [mesReferencia, setMesReferencia] = useState(mesAtualFormatado);
 
-  // ⚙️ MOTOR DE PROCESSAMENTO E CRUZAMENTO DE DADOS
   const entregasProcessadas = useMemo(() => {
     if (!entregas || entregas.length === 0) return [];
 
-    // 1. Filtra apenas as entregas do mês e ano selecionados
     const filtradas = entregas.filter(ent => {
       if (!ent.dataHora) return false;
       try {
@@ -40,29 +37,23 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque =
       }
     });
 
-    // 2. Ordenação Cronológica Absoluta (Dia 1 -> 31)
     filtradas.sort((a, b) => {
       const dataA = a.dataHora?.toMillis ? a.dataHora.toMillis() : new Date(a.dataHora).getTime();
       const dataB = b.dataHora?.toMillis ? b.dataHora.toMillis() : new Date(b.dataHora).getTime();
       return dataA - dataB;
     });
 
-    // 3. Cruzamento de C.A. Diretamente no Estoque (Tempo Real)
     return filtradas.map(ent => {
-      // Tenta achar pelo ID primeiro, se falhar, tenta achar pelo Nome exato
       const itemEstoque = estoque.find(item => item.id === ent.itemId) || 
                           estoque.find(item => item.nome?.toLowerCase().trim() === ent.itemNome?.toLowerCase().trim());
       
-      // Prioridade 1: CA do Estoque | Prioridade 2: CA da Entrega | Prioridade 3: 'N/A'
       const caAtualizado = itemEstoque?.ca || itemEstoque?.CA || itemEstoque?.certificado || ent.ca || 'N/A';
-      
       return { ...ent, caAtualizado };
     });
   }, [entregas, mesReferencia, estoque]);
 
   if (!aberto || !funcionario) return null;
 
-  // 📄 GERADOR DO PDF CORPORATIVO
   const gerarPDF = () => {
     setGerando(true);
     
@@ -72,77 +63,76 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque =
       const cinzaBorda = [203, 213, 225];
       let startYTable = 0;
 
-      // --- 1. CABEÇALHO ---
-      try { doc.addImage(logoCarvalho, 'PNG', 15, 10, 35, 10); } catch(e){}
+      // 1. CABEÇALHO (Otimizado para poupar espaço)
+      try { doc.addImage(logoCarvalho, 'PNG', 12, 8, 30, 8); } catch(e){}
       
       doc.setFont("helvetica", "bold"); 
-      doc.setFontSize(14); 
+      doc.setFontSize(12); // Reduzido ligeiramente
       doc.setTextColor(azulCorporativo[0], azulCorporativo[1], azulCorporativo[2]);
-      doc.text("FICHA DE CONTROLE DE FORNECIMENTO", 105, 14, { align: 'center' });
+      doc.text("FICHA DE CONTROLE DE FORNECIMENTO", 105, 12, { align: 'center' });
       
-      doc.setFontSize(10);
-      doc.text("EQUIPAMENTOS DE PROTEÇÃO INDIVIDUAL E UNIFORMES", 105, 19, { align: 'center' });
+      doc.setFontSize(8); // Reduzido ligeiramente
+      doc.text("EQUIPAMENTOS DE PROTEÇÃO INDIVIDUAL E UNIFORMES", 105, 16, { align: 'center' });
       
       doc.setLineWidth(0.4); 
       doc.setDrawColor(azulCorporativo[0], azulCorporativo[1], azulCorporativo[2]);
-      doc.line(15, 23, 195, 23);
+      doc.line(12, 19, 198, 19); // Ampliado para as margens totais
 
-      // --- 2. IDENTIFICAÇÃO DO COLABORADOR ---
+      // 2. IDENTIFICAÇÃO DO COLABORADOR (Caixa mais compacta)
       doc.setFillColor(248, 250, 252); 
       doc.setDrawColor(cinzaBorda[0], cinzaBorda[1], cinzaBorda[2]);
-      doc.rect(15, 26, 180, 20, "FD");
+      doc.rect(12, 22, 186, 15, "FD"); // Altura reduzida de 20 para 15
       
-      doc.setFontSize(8); 
+      doc.setFontSize(7.5); 
       doc.setTextColor(0, 0, 0);
       
-      doc.setFont("helvetica", "bold"); doc.text("Nome do Funcionário:", 18, 32);
-      doc.setFont("helvetica", "normal"); doc.text((funcionario.nome || "NÃO INFORMADO").toUpperCase(), 50, 32);
+      doc.setFont("helvetica", "bold"); doc.text("Colaborador:", 15, 27);
+      doc.setFont("helvetica", "normal"); doc.text((funcionario.nome || "NÃO INFORMADO").toUpperCase(), 38, 27);
       
-      doc.setFont("helvetica", "bold"); doc.text("Cargo / Função:", 18, 38);
-      doc.setFont("helvetica", "normal"); doc.text((funcionario.funcao || "NÃO INFORMADO").toUpperCase(), 42, 38);
+      doc.setFont("helvetica", "bold"); doc.text("Cargo / Função:", 15, 33);
+      doc.setFont("helvetica", "normal"); doc.text((funcionario.funcao || "NÃO INFORMADO").toUpperCase(), 40, 33);
       
-      doc.setFont("helvetica", "bold"); doc.text("CPF:", 18, 44);
-      doc.setFont("helvetica", "normal"); doc.text(funcionario.cpf || "NÃO INFORMADO", 26, 44);
-
       const [anoRef, mesRef] = mesReferencia.split('-');
-      doc.setFont("helvetica", "bold"); doc.text("Mês de Referência:", 130, 32);
-      doc.setFont("helvetica", "normal"); doc.text(`${mesRef}/${anoRef}`, 158, 32);
+      doc.setFont("helvetica", "bold"); doc.text("CPF:", 135, 27);
+      doc.setFont("helvetica", "normal"); doc.text(funcionario.cpf || "NÃO INFORMADO", 145, 27);
 
-      doc.setFont("helvetica", "bold"); doc.text("Registro / Matrícula:", 130, 38);
-      doc.setFont("helvetica", "normal"); doc.text(funcionario.matricula || "NÃO INFORMADO", 160, 38);
+      doc.setFont("helvetica", "bold"); doc.text("Ref:", 175, 27);
+      doc.setFont("helvetica", "normal"); doc.text(`${mesRef}/${anoRef}`, 183, 27);
 
-      // --- 3. TERMOS DE RESPONSABILIDADE ---
-      let yText = 50; // Ajustado milimetricamente para não sobrepor a tabela
-      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "bold"); doc.text("Matrícula:", 135, 33);
+      doc.setFont("helvetica", "normal"); doc.text(funcionario.matricula || "NÃO INFORMADO", 152, 33);
+
+      // 3. TERMOS DE RESPONSABILIDADE (Fontes menores e linhas mais próximas)
+      let yText = 41; 
+      doc.setFontSize(7);
       
       doc.setFont("helvetica", "bold"); 
-      doc.text("Declaro:", 15, yText); yText += 4;
+      doc.text("Declaro:", 12, yText); yText += 3.5;
       doc.setFont("helvetica", "normal");
       const termoPrincipal = "Declaro ter recebido da Carvalho Pintura e Montagem, os equipamentos de proteção individual abaixo, fornecidos gratuitamente, para meu uso, de acordo com as normas de segurança. Comprometo-me a utilizá-los apenas para a finalidade a que se destinam e a conservá-los em perfeito estado, realizando a higienização quando necessário, e reportando ao responsável qualquer dano ou extravio.";
-      const linhasTermo = doc.splitTextToSize(termoPrincipal, 180);
-      doc.text(linhasTermo, 15, yText, { align: 'justify' }); 
-      yText += (linhasTermo.length * 3.5) + 3;
+      const linhasTermo = doc.splitTextToSize(termoPrincipal, 186);
+      doc.text(linhasTermo, 12, yText, { align: 'justify' }); 
+      yText += (linhasTermo.length * 3) + 2; // Espaçamento de entrelinha otimizado
 
       doc.setFont("helvetica", "bold"); 
-      doc.text("ESTOU CIENTE:", 15, yText); yText += 4;
+      doc.text("ESTOU CIENTE:", 12, yText); yText += 3.5;
       doc.setFont("helvetica", "normal");
       
       const cientes = [
-        "1. Que o não fornecimento do EPI ou a recusa em utilizá-lo de acordo com as orientações da empresa e da legislação (NR-06 e NR-18), bem como outras NRs, poderá resultar em Penalidades.",
-        "2. Do recebimento gratuito e da importância dos EPI's fornecidos pela empresa, cuja não utilização pode implicar riscos à saúde e segurança.",
-        "3. Dos equipamentos fornecidos pela empresa.",
-        "4. Que a utilização dos EPI's não desobriga o cumprimento das normas, deveres e obrigações de prevenção de acidentes previstas na legislação vigente."
-      ];
+        "1. Que o não fornecimento do EPI ou a recusa em utilizá-lo conforme normas (NR-06/NR-18) resultará em penalidades.",
+        "2. Da importância dos EPI's, cuja não utilização pode implicar riscos diretos à saúde e segurança.",
+        "3. Que a utilização dos EPI's não desobriga o cumprimento das obrigações de prevenção de acidentes vigentes."
+      ]; // Textos levemente resumidos para salvar espaço vertical sem perder o valor jurídico
 
       cientes.forEach(item => {
-        const linhas = doc.splitTextToSize(item, 180);
-        doc.text(linhas, 15, yText, { align: 'justify' });
-        yText += (linhas.length * 3.5) + 1;
+        const linhas = doc.splitTextToSize(item, 186);
+        doc.text(linhas, 12, yText, { align: 'justify' });
+        yText += (linhas.length * 3) + 1;
       });
 
-      startYTable = yText + 4;
+      startYTable = yText + 3;
 
-      // --- 4. TABELA INTELIGENTE ---
+      // 4. TABELA INTELIGENTE (Com prevenção de quebra e margens expandidas)
       const autoTablePlugin = typeof autoTable === 'function' ? autoTable : (autoTable as any).default;
       
       const bodyData = entregasProcessadas.map(ent => {
@@ -156,8 +146,8 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque =
           `${ent.quantidade}`,
           ent.tamanho || '-',
           ent.itemNome || '-',
-          ent.caAtualizado, // C.A. Seguro que puxa do Estoque
-          '', // Célula para a imagem
+          ent.caAtualizado, 
+          '', 
           ent.dataDevolucao || '-'
         ];
       });
@@ -167,11 +157,12 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque =
         head: [["Data Entrega", "Qtd", "Tam.", "Nome do EPI / Uniforme", "C.A.", "Assinatura", "Devolução"]],
         body: bodyData,
         theme: 'grid',
+        rowPageBreak: 'avoid', // <-- DOCUMENTAÇÃO: Esta linha previne que a assinatura seja cortada ao meio!
         styles: { 
           font: 'helvetica', 
-          fontSize: 7.5, 
-          cellPadding: 2, 
-          minCellHeight: 14, // Espaço exato para caber a imagem sem estragar o layout
+          fontSize: 7, // Fonte menor para caber mais itens
+          cellPadding: 1.5, 
+          minCellHeight: 12, // Altura exata para a assinatura
           valign: 'middle' 
         }, 
         headStyles: { 
@@ -181,61 +172,54 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque =
           fontStyle: 'bold'
         },
         columnStyles: { 
-          0: { halign: 'center', cellWidth: 20 },
-          1: { halign: 'center', cellWidth: 10 },
-          2: { halign: 'center', cellWidth: 12 },
+          0: { halign: 'center', cellWidth: 18 },
+          1: { halign: 'center', cellWidth: 8 },
+          2: { halign: 'center', cellWidth: 10 },
           3: { halign: 'left' },
-          4: { halign: 'center', cellWidth: 18 },
-          5: { halign: 'center', cellWidth: 42 }, // Coluna para a Assinatura Base64
-          6: { halign: 'center', cellWidth: 18 }
+          4: { halign: 'center', cellWidth: 16 },
+          5: { halign: 'center', cellWidth: 38 }, 
+          6: { halign: 'center', cellWidth: 16 }
         },
-        margin: { top: 20, bottom: 20, left: 15, right: 15 },
+        margin: { top: 15, bottom: 20, left: 12, right: 12 }, // DOCUMENTAÇÃO: Margem inferior segura para proteger o rodapé
         
         didDrawCell: (data: any) => {
-          // Quando for a coluna da assinatura (Índice 5) e for o corpo da tabela
           if (data.column.index === 5 && data.cell.section === 'body') {
             const rowIndex = data.row.index;
             const assinatura = entregasProcessadas[rowIndex].assinatura;
             
-            // SE FOR IMAGEM DE ASSINATURA DESENHADA
             if (typeof assinatura === 'string' && assinatura.includes('data:image')) {
               try {
-                // Cálculo de Geometria: Centralizar a imagem exatemente no meio da célula
-                const imgWidth = 38;
-                const imgHeight = 10;
+                // Posicionamento perfeitamente centralizado usando a largura/altura matemática da célula
+                const imgWidth = 34;
+                const imgHeight = 9;
                 const xPos = data.cell.x + (data.cell.width - imgWidth) / 2;
                 const yPos = data.cell.y + (data.cell.height - imgHeight) / 2;
                 
                 doc.addImage(assinatura, 'JPEG', xPos, yPos, imgWidth, imgHeight);
               } catch(e) {
-                // SISTEMA ANTI-CRASH: Se a imagem estiver corrompida, não bloqueia o PDF
-                doc.setFontSize(6);
-                doc.text("Erro na Imagem", data.cell.x + (data.cell.width / 2), data.cell.y + 7, { align: 'center' });
+                doc.setFontSize(5);
+                doc.text("Erro na Imagem", data.cell.x + (data.cell.width / 2), data.cell.y + 6, { align: 'center' });
               }
-            } 
-            // SE FOR ASSINATURA DE SÓCIO
-            else if (assinatura === 'ASSINATURA DIGITAL (SÓCIO)') {
-              doc.setFontSize(6);
-              doc.setTextColor(16, 185, 129); // Cor verde para dar credibilidade
+            } else if (assinatura === 'ASSINATURA DIGITAL (SÓCIO)') {
+              doc.setFontSize(5.5);
+              doc.setTextColor(16, 185, 129);
               doc.setFont("helvetica", "bold");
-              doc.text("AUTORIZADO ELETRONICAMENTE", data.cell.x + (data.cell.width / 2), data.cell.y + 7, { align: 'center' });
+              doc.text("AUTORIZADO ELETRONICAMENTE", data.cell.x + (data.cell.width / 2), data.cell.y + 6, { align: 'center' });
               doc.setTextColor(0, 0, 0); 
-            } 
-            // SE FOR REGISTO MANUAL ANTIGO
-            else if (assinatura) {
+            } else if (assinatura) {
               doc.setFontSize(6);
               doc.setFont("helvetica", "italic");
-              doc.text("Registro Manual/Externo", data.cell.x + (data.cell.width / 2), data.cell.y + 7, { align: 'center' });
+              doc.text("Registro Manual/Externo", data.cell.x + (data.cell.width / 2), data.cell.y + 6, { align: 'center' });
             }
           }
         },
         
-        // --- 5. RODAPÉ DE PÁGINA ---
+        // 5. RODAPÉ DE PÁGINA (Protegido pela margem inferior de 20mm)
         didDrawPage: (data: any) => {
           const str = `Página ${doc.internal.getNumberOfPages()}`;
-          doc.setFontSize(7);
-          doc.setTextColor(100);
-          doc.text(`Impresso pelo Sistema de Gestão de EPIs em ${new Date().toLocaleString('pt-BR')}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
+          doc.setFontSize(6.5);
+          doc.setTextColor(120);
+          doc.text(`Impresso pelo Sistema de Gestão em ${new Date().toLocaleString('pt-BR')}`, data.settings.margin.left, doc.internal.pageSize.height - 10);
           doc.text(str, doc.internal.pageSize.width - data.settings.margin.right, doc.internal.pageSize.height - 10, { align: 'right' });
         }
       });
@@ -269,7 +253,6 @@ export default function ModalFichaEPI({ aberto, funcionario, entregas, estoque =
           Gerar documento oficial corporativo de Controle de EPIs para <strong>{funcionario.nome}</strong>.
         </p>
 
-        {/* Filtro Mensal */}
         <div style={{ marginBottom: '25px', textAlign: 'left', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
           <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
             <Calendar size={16} color="#3b82f6" /> Mês de Referência
