@@ -3,11 +3,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, doc, setDoc, query, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase'; 
 import { dbFolha } from '../services/firebaseFolha'; 
-import { Wallet, Banknote, PlusCircle, ArrowRight, User, Bus, Route, Trash2, QrCode, FileText, Download } from 'lucide-react';
+import { Wallet, Banknote, PlusCircle, ArrowRight, User, Bus, Route, Trash2, QrCode, FileText, Download, Edit3 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
-// Importações do motor de PDF que já tens no projeto
+// Importações do motor de PDF
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -38,7 +38,13 @@ export default function GestaoFinanceira() {
   const [mesFiltro, setMesFiltro] = useState(new Date().toISOString().substring(0, 7));
   const [termoBusca, setTermoBusca] = useState('');
 
-  const diasUteisDoMes = useMemo(() => calcularDiasUteis(mesFiltro), [mesFiltro]);
+  // 🚀 NOVO: Estado editável para a quantidade de dias
+  const [diasUteis, setDiasUteis] = useState<number>(calcularDiasUteis(new Date().toISOString().substring(0, 7)));
+
+  // Atualiza os dias úteis padrão caso o mês mude
+  useEffect(() => {
+    setDiasUteis(calcularDiasUteis(mesFiltro));
+  }, [mesFiltro]);
 
   // Estados dos Modais de Adiantamento e Transporte
   const [modalAdiantamento, setModalAdiantamento] = useState<{ visivel: boolean, funcId: string, nome: string }>({ visivel: false, funcId: '', nome: '' });
@@ -71,16 +77,22 @@ export default function GestaoFinanceira() {
     carregarFinancas();
   }, [mesFiltro]);
 
-  // Lógica de Chave PIX
+  // Lógica de Chave PIX (Agora salva padrão no perfil global do funcionário)
   const salvarChavePix = async (funcId: string, chave: string) => {
     const idDoc = `${funcId}_${mesFiltro}`;
     await setDoc(doc(dbFolha, 'financeiro_mes', idDoc), { chavePix: chave }, { merge: true });
+    // 🚀 NOVO: Salva globalmente para os próximos meses
+    await setDoc(doc(db, 'funcionarios', funcId), { chavePixPadrao: chave }, { merge: true });
     setDadosFinanceiros(prev => ({ ...prev, [funcId]: { ...prev[funcId], chavePix: chave } }));
   };
 
   // Lógica do Construtor de Rotas
   const abrirModalTransporte = (funcId: string, nome: string) => {
-    const rotasAtuais = dadosFinanceiros[funcId]?.transportes || [];
+    const dadosFunc = dadosFinanceiros[funcId] || {};
+    // 🚀 NOVO: Se tiver rota no mês, usa. Senão, puxa as rotas padrão do cadastro do funcionário.
+    const funcGlobal = funcionarios.find(f => f.id === funcId);
+    const rotasAtuais = dadosFunc.transportes !== undefined ? dadosFunc.transportes : (funcGlobal?.transportesPadrao || []);
+    
     setModalTransporte({ visivel: true, funcId, nome, rotas: [...rotasAtuais] });
   };
 
@@ -109,11 +121,18 @@ export default function GestaoFinanceira() {
       const qtd = parseInt(rota.qtdDiaria) || 0;
       totalDiario += (valor * qtd);
     });
-    const valorMensalTotal = totalDiario * diasUteisDoMes;
+    const valorMensalTotal = totalDiario * diasUteis;
 
+    // Salvar no mês específico
     await setDoc(doc(dbFolha, 'financeiro_mes', idDoc), {
       funcionarioId: funcId, nomeFuncionario: nome, mesReferencia: mesFiltro,
       transportes: rotas, valorPassagemDiario: totalDiario, valorPassagem: valorMensalTotal
+    }, { merge: true });
+
+    // 🚀 NOVO: Salvar o PADRÃO no cadastro do funcionário (vale para os meses subsequentes)
+    await setDoc(doc(db, 'funcionarios', funcId), {
+      transportesPadrao: rotas,
+      valorPassagemDiarioPadrao: totalDiario
     }, { merge: true });
 
     setDadosFinanceiros(prev => ({
@@ -122,7 +141,6 @@ export default function GestaoFinanceira() {
     setModalTransporte({ visivel: false, funcId: '', nome: '', rotas: [] });
   };
 
-  // 🚀 NOVO: Adicionar Adiantamento com Suporte a Atualização
   const salvarAdiantamento = async () => {
     if (!valorAdiantamento) return;
     const { funcId, nome } = modalAdiantamento;
@@ -149,7 +167,6 @@ export default function GestaoFinanceira() {
     setValorAdiantamento(''); setMotivoAdiantamento('');
   };
 
-  // 🚀 NOVO: Sistema para Excluir um Adiantamento Específico
   const excluirAdiantamento = async (funcId: string, idAdiantamento: string) => {
     const idDoc = `${funcId}_${mesFiltro}`;
     const dadosAtuais = dadosFinanceiros[funcId] || {};
@@ -166,7 +183,7 @@ export default function GestaoFinanceira() {
     }));
   };
 
-  // 🚀 NOVO: Geração de PDF 1 (Transporte e PIX) usando jsPDF + autotable
+  // Geração de PDF 1 (Transporte e PIX) com cálculos reativos
   const exportarPdfPixTransporte = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const azul = [30, 41, 59];
@@ -178,20 +195,25 @@ export default function GestaoFinanceira() {
     
     docPdf.setFontSize(10);
     docPdf.setTextColor(100);
-    docPdf.text(`Mês de Referência: ${mesFiltro.split('-').reverse().join('/')} | Dias Úteis: ${diasUteisDoMes}`, 105, 22, { align: 'center' });
+    docPdf.text(`Mês de Referência: ${mesFiltro.split('-').reverse().join('/')} | Dias Úteis: ${diasUteis}`, 105, 22, { align: 'center' });
 
     const corpoTabela: any[] = [];
     let valorTotalGeral = 0;
 
     funcionarios.forEach(func => {
       const dados = dadosFinanceiros[func.id] || {};
-      const totalPass = dados.valorPassagem || 0;
+      
+      // 🚀 NOVO: Puxa o dado do mês ou o padrão (se o mês estiver em branco)
+      const totalDiario = dados.valorPassagemDiario !== undefined ? dados.valorPassagemDiario : (func.valorPassagemDiarioPadrao || 0);
+      const chavePix = dados.chavePix !== undefined ? dados.chavePix : (func.chavePixPadrao || 'Não informada');
+      const totalPass = totalDiario * diasUteis; 
+
       if (totalPass > 0) {
         valorTotalGeral += totalPass;
         corpoTabela.push([
           func.nome.toUpperCase(),
-          dados.chavePix || 'Não informada',
-          diasUteisDoMes.toString(),
+          chavePix,
+          diasUteis.toString(),
           `R$ ${totalPass.toFixed(2)}`
         ]);
       }
@@ -216,7 +238,6 @@ export default function GestaoFinanceira() {
     docPdf.save(`Relatorio_Transporte_PIX_${mesFiltro}.pdf`);
   };
 
-  // 🚀 NOVO: Geração de PDF 2 (Vales para Contabilidade) usando jsPDF + autotable
   const exportarPdfValesEscritorio = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const vermelho = [185, 28, 28];
@@ -286,12 +307,23 @@ export default function GestaoFinanceira() {
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'white', padding: '8px 15px', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
-                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Dias Úteis: <span style={{ color: '#0ea5e9', fontSize: '15px' }}>{diasUteisDoMes}</span></span>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  Dias Úteis (Mês): 
+                  {/* 🚀 NOVO: Input numérico para configurar dias na hora */}
+                  <input 
+                    type="number" 
+                    value={diasUteis} 
+                    onChange={e => setDiasUteis(parseInt(e.target.value) || 0)} 
+                    style={{ border: '1px solid #e2e8f0', borderRadius: '6px', outline: 'none', fontWeight: 'bold', color: '#0ea5e9', fontSize: '15px', width: '45px', textAlign: 'center', padding: '2px' }} 
+                    title="Altere manualmente os dias úteis deste mês"
+                  />
+                  <Edit3 size={14} color="#94a3b8"/>
+                </span>
+                <span style={{ borderLeft: '1px solid #e2e8f0', height: '20px', margin: '0 5px' }}></span>
                 <input type="month" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} style={{ border: 'none', outline: 'none', fontWeight: 'bold' }} />
             </div>
           </div>
 
-          {/* Botões de Exportação PDF */}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <Button onClick={exportarPdfPixTransporte} style={{ backgroundColor: '#0f172a', display: 'flex', gap: '8px' }}>
               <Download size={18}/> PDF - PIX e Transporte
@@ -307,14 +339,18 @@ export default function GestaoFinanceira() {
             const dadosFunc = dadosFinanceiros[func.id] || {};
             const adiantamentos = dadosFunc.adiantamentos || [];
             const totalAdiantado = adiantamentos.reduce((acc: number, curr: any) => acc + curr.valor, 0);
-            const rotasFunc = dadosFunc.transportes || [];
-            const totalPassagemDiario = dadosFunc.valorPassagemDiario || 0;
-            const totalPassagemCalculado = dadosFunc.valorPassagem || 0;
+            
+            // 🚀 NOVO: Puxa o dado do mês atual ou herda o Padrão do Funcionario
+            const rotasFunc = dadosFunc.transportes !== undefined ? dadosFunc.transportes : (func.transportesPadrao || []);
+            const totalPassagemDiario = dadosFunc.valorPassagemDiario !== undefined ? dadosFunc.valorPassagemDiario : (func.valorPassagemDiarioPadrao || 0);
+            const chavePixExibida = dadosFunc.chavePix !== undefined ? dadosFunc.chavePix : (func.chavePixPadrao || '');
+            
+            // 🚀 NOVO: O valor mensal é calculado dinamicamente com base nos 'diasUteis' configurados na tela
+            const totalPassagemCalculado = totalPassagemDiario * diasUteis;
 
             return (
               <div key={func.id} style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                 
-                {/* CABEÇALHO COM CHAVE PIX */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ width: '40px', height: '40px', backgroundColor: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={20} color="#475569" /></div>
@@ -326,20 +362,19 @@ export default function GestaoFinanceira() {
                     <input 
                       type="text" 
                       placeholder="Chave PIX..." 
-                      defaultValue={dadosFunc.chavePix || ''}
+                      defaultValue={chavePixExibida}
                       onBlur={(e) => salvarChavePix(func.id, e.target.value)}
                       style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '200px' }}
                     />
                   </div>
                 </div>
 
-                {/* PAINEL DE TRANSPORTE */}
                 <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px dashed #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                   <div>
                     <h4 style={{ margin: '0 0 5px 0', fontSize: '13px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase' }}><Bus size={14}/> Vale Transporte</h4>
                     {rotasFunc.length > 0 ? (
                       <p style={{ margin: 0, fontSize: '13px', color: '#334155' }}>
-                        Custo Diário: <strong>R$ {totalPassagemDiario.toFixed(2)}</strong> | Previsto no Mês ({diasUteisDoMes} dias): <strong style={{ color: '#0ea5e9', fontSize: '15px' }}>R$ {totalPassagemCalculado.toFixed(2)}</strong>
+                        Custo Diário: <strong>R$ {totalPassagemDiario.toFixed(2)}</strong> | Previsto no Mês ({diasUteis} dias): <strong style={{ color: '#0ea5e9', fontSize: '15px' }}>R$ {totalPassagemCalculado.toFixed(2)}</strong>
                       </p>
                     ) : (
                       <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>Nenhuma rota configurada.</p>
@@ -350,7 +385,6 @@ export default function GestaoFinanceira() {
                   </Button>
                 </div>
 
-                {/* CAIXINHA / ADIANTAMENTOS COM OPÇÃO DE EXCLUIR */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                     <h4 style={{ margin: 0, fontSize: '14px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}><Banknote size={16} /> Adiantamentos (Caixinha)</h4>
@@ -366,7 +400,6 @@ export default function GestaoFinanceira() {
                           <span style={{ color: '#991b1b' }}>{ad.data} - {ad.motivo}</span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                             <strong style={{ color: '#b91c1c' }}>R$ {ad.valor.toFixed(2)}</strong>
-                            {/* Botão para excluir o adiantamento errado */}
                             <button onClick={() => excluirAdiantamento(func.id, ad.id)} title="Excluir este vale" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}>
                               <Trash2 size={16} />
                             </button>
@@ -388,7 +421,6 @@ export default function GestaoFinanceira() {
         </div>
       </div>
 
-      {/* MODAL DO CONSTRUTOR DE ROTAS */}
       {modalTransporte.visivel && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px', backdropFilter: 'blur(3px)' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', animation: 'fadeIn 0.3s' }}>
@@ -427,7 +459,6 @@ export default function GestaoFinanceira() {
         </div>
       )}
 
-      {/* MODAL DE ADIANTAMENTO */}
       {modalAdiantamento.visivel && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(3px)' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '400px', animation: 'fadeIn 0.3s' }}>
