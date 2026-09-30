@@ -3,12 +3,20 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot, doc, setDoc, query, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase'; 
 import { dbFolha } from '../services/firebaseFolha'; 
-import { Wallet, Banknote, PlusCircle, ArrowRight, User, Bus, Route, Trash2, QrCode, Download, Edit3, PenTool, CheckCircle } from 'lucide-react';
+import { Wallet, Banknote, PlusCircle, ArrowRight, User, Bus, Route, Trash2, QrCode, Download, Edit3, PenTool, CheckCircle, FileText } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import logoCarvalho from '../assets/logopdf.png';
+
+// Função utilitária para formatar CPF no padrão 000.000.000-00
+const formatarCPF = (cpf: string) => {
+  if (!cpf) return 'Não informado';
+  const apenasNumeros = cpf.replace(/\D/g, '');
+  if (apenasNumeros.length !== 11) return cpf; 
+  return apenasNumeros.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+};
 
 // Motor de Cálculo de Dias Úteis
 const calcularDiasUteis = (mesAnoFiltro: string) => {
@@ -70,7 +78,6 @@ export default function GestaoFinanceira() {
     await setDoc(doc(db, 'funcionarios', funcId), { chavePixPadrao: chave }, { merge: true });
   };
 
-  // 🚀 Lógica de Dias Úteis Personalizados por Funcionário
   const salvarDiasPersonalizados = async (funcId: string, dias: number) => {
     const idDoc = `${funcId}_${mesFiltro}`;
     if (isNaN(dias)) return;
@@ -187,7 +194,156 @@ export default function GestaoFinanceira() {
     setModalAssinatura({ visivel: false, funcId: '', idVale: '' });
   };
 
-  // 🚀 PDF TRANSPORTE VISUALMENTE MELHORADO
+  // PDF GERAL PARA O ESCRITÓRIO
+  const exportarPdfValesEscritorio = () => {
+    const docPdf = new jsPDF('p', 'mm', 'a4');
+    const vermelhoCorporativo = [185, 28, 28];
+
+    try { docPdf.addImage(logoCarvalho, 'PNG', 14, 10, 30, 8); } catch(e){}
+
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(14); docPdf.setTextColor(vermelhoCorporativo[0], vermelhoCorporativo[1], vermelhoCorporativo[2]);
+    docPdf.text("RELATÓRIO DE DESCONTOS (VALES)", 105, 14, { align: 'center' });
+    
+    docPdf.setFontSize(9); docPdf.setTextColor(100);
+    docPdf.text(`Competência: ${mesFiltro.split('-').reverse().join('/')}`, 105, 19, { align: 'center' });
+    
+    docPdf.setLineWidth(0.4); docPdf.setDrawColor(vermelhoCorporativo[0], vermelhoCorporativo[1], vermelhoCorporativo[2]);
+    docPdf.line(14, 22, 196, 22);
+
+    const corpoTabela = funcionarios.map(func => {
+      const dados = dadosFinanceiros[func.id] || {};
+      const adiantamentos = dados.adiantamentos || [];
+      const totalFunc = adiantamentos.reduce((acc: number, curr: any) => acc + curr.valor, 0);
+
+      if (totalFunc > 0) {
+        const descricaoVales = adiantamentos.map((ad: any) => `• [${ad.data}] ${ad.motivo}: R$ ${ad.valor.toFixed(2)}`).join('\n');
+        return [func.nome.toUpperCase(), descricaoVales, `R$ ${totalFunc.toFixed(2)}`];
+      }
+      return null;
+    }).filter(Boolean);
+
+    (docPdf as any).autoTable({ 
+      startY: 28, 
+      head: [["Colaborador", "Discriminação dos Adiantamentos", "Total a Descontar"]], 
+      body: corpoTabela, 
+      theme: 'grid', 
+      styles: { fontSize: 8.5, cellPadding: 4, valign: 'middle' }, 
+      headStyles: { fillColor: vermelhoCorporativo, textColor: 255 }, 
+      columnStyles: { 0: { fontStyle: 'bold', halign: 'left' }, 1: { halign: 'left' }, 2: { halign: 'center', fontStyle: 'bold', textColor: vermelhoCorporativo } } 
+    });
+    
+    docPdf.save(`Relatorio_Descontos_${mesFiltro}.pdf`);
+  };
+
+  // 🚀 2. PDF DE TERMO E VALES INDIVIDUAL (Perfeitamente dimensionado para caber numa única página A4 com margens seguras)
+  const exportarPdfTermoIndividual = (func: any) => {
+    const docPdf = new jsPDF('p', 'mm', 'a4');
+    const vermelhoCorporativo = [185, 28, 28];
+    const cpfFormatado = formatarCPF(func.cpf);
+
+    // Margem superior otimizada (começa nos 12mm)
+    try { docPdf.addImage(logoCarvalho, 'PNG', 14, 10, 28, 7); } catch(e){}
+
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(12); docPdf.setTextColor(vermelhoCorporativo[0], vermelhoCorporativo[1], vermelhoCorporativo[2]);
+    docPdf.text("TERMO DE CONSENTIMENTO E ADIANTAMENTO SALARIAL", 105, 13, { align: 'center' });
+    
+    docPdf.setFontSize(7.5); docPdf.setTextColor(90, 90, 90);
+    docPdf.text("CARVALHO FUNILARIA E PINTURAS LTDA | CNPJ: 31.362.302/0001-39", 105, 17, { align: 'center' });
+    
+    docPdf.setLineWidth(0.3); docPdf.setDrawColor(vermelhoCorporativo[0], vermelhoCorporativo[1], vermelhoCorporativo[2]);
+    docPdf.line(14, 20, 196, 20);
+
+    // Bloco de Identificação Formal do Colaborador
+    let yText = 24;
+    docPdf.setFillColor(248, 250, 252);
+    docPdf.setDrawColor(203, 213, 225);
+    docPdf.rect(14, yText, 182, 11, "FD");
+
+    docPdf.setFontSize(7.5); docPdf.setTextColor(0, 0, 0);
+    docPdf.setFont("helvetica", "bold"); docPdf.text("COLABORADOR:", 17, yText + 4.5);
+    docPdf.setFont("helvetica", "normal"); docPdf.text((func.nome || "NÃO INFORMADO").toUpperCase(), 43, yText + 4.5);
+
+    docPdf.setFont("helvetica", "bold"); docPdf.text("CPF:", 132, yText + 4.5);
+    docPdf.setFont("helvetica", "normal"); docPdf.text(cpfFormatado, 141, yText + 4.5);
+
+    docPdf.setFont("helvetica", "bold"); docPdf.text("COMPETÊNCIA:", 17, yText + 8.5);
+    docPdf.setFont("helvetica", "normal"); docPdf.text(mesFiltro.split('-').reverse().join('/'), 43, yText + 8.5);
+
+    yText += 15;
+
+    // Declaração Formal Justificada com tamanho otimizado (7.5pt) para nunca passar da página
+    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(7.5); docPdf.setTextColor(vermelhoCorporativo[0], vermelhoCorporativo[1], vermelhoCorporativo[2]);
+    docPdf.text("DECLARAÇÃO DE ANUÊNCIA E AUTORIZAÇÃO DE DESCONTO", 14, yText); yText += 3.5;
+    
+    docPdf.setFont("helvetica", "normal"); docPdf.setFontSize(7.5); docPdf.setTextColor(40, 40, 40);
+    const termoConsentimento = `Eu, ${func.nome.toUpperCase()}, portador(a) do CPF nº ${cpfFormatado}, declaro para os devidos fins legais que recebi da empresa CARVALHO FUNILARIA E PINTURAS LTDA os valores em espécie ou adiantamentos discriminados na tabela abaixo. Por meio deste termo, autorizo expressamente a empresa a efetuar o desconto correspondente ao montante total em minha folha de pagamento ou verbas rescisórias referentes ao mês de competência ${mesFiltro.split('-').reverse().join('/')}, em conformidade com as normativas vigentes.`;
+    
+    const linhasTermo = docPdf.splitTextToSize(termoConsentimento, 182);
+  docPdf.text(termoConsentimento, 14, yText, { align: 'justify', maxWidth: 182, lineHeightFactor: 1.2 });
+  yText += (linhasTermo.length * 3.5) + 4;
+
+    const dados = dadosFinanceiros[func.id] || {};
+    const adiantamentos = dados.adiantamentos || [];
+
+    const corpoTabela = adiantamentos.map((ad: any) => [
+      ad.data,
+      ad.motivo,
+      `R$ ${ad.valor.toFixed(2)}`,
+      '' 
+    ]);
+
+    (docPdf as any).autoTable({ 
+      startY: yText, 
+      head: [["Data do Vale", "Descrição / Motivo", "Valor (R$)", "Assinatura do Colaborador"]], 
+      body: corpoTabela, 
+      theme: 'grid', 
+      rowPageBreak: 'avoid',
+      styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle' }, 
+      headStyles: { fillColor: vermelhoCorporativo, textColor: 255, halign: 'center', fontStyle: 'bold' }, 
+      columnStyles: { 
+        0: { halign: 'center', cellWidth: 26 }, 
+        1: { halign: 'left' }, 
+        2: { halign: 'center', fontStyle: 'bold', textColor: vermelhoCorporativo, cellWidth: 28 },
+        3: { halign: 'center', cellWidth: 46, minCellHeight: 10 } 
+      },
+      didDrawCell: (data: any) => {
+        if (data.column.index === 3 && data.cell.section === 'body') {
+          const rowIndex = data.row.index;
+          const assinaturaBase64 = adiantamentos[rowIndex]?.assinatura;
+          
+          if (typeof assinaturaBase64 === 'string' && assinaturaBase64.includes('data:image')) {
+            try {
+              const imgWidth = 36;
+              const imgHeight = 8;
+              const xPos = data.cell.x + (data.cell.width - imgWidth) / 2;
+              const yPos = data.cell.y + (data.cell.height - imgHeight) / 2;
+              docPdf.addImage(assinaturaBase64, 'PNG', xPos, yPos, imgWidth, imgHeight);
+            } catch (e) {
+              docPdf.setFontSize(6);
+              docPdf.text("Erro na Imagem", data.cell.x + (data.cell.width / 2), data.cell.y + 5, { align: 'center' });
+            }
+          } else {
+            docPdf.setFontSize(6.5);
+            docPdf.setFont("helvetica", "italic");
+            docPdf.setTextColor(150, 150, 150);
+            docPdf.text("Não Assinado", data.cell.x + (data.cell.width / 2), data.cell.y + 5, { align: 'center' });
+            docPdf.setTextColor(0, 0, 0);
+          }
+        }
+      },
+      didDrawPage: (data: any) => {
+        const str = `Página ${docPdf.internal.getNumberOfPages()}`;
+        docPdf.setFontSize(6);
+        docPdf.setTextColor(120);
+        docPdf.text(`Carvalho Funilaria e Pinturas Ltda - Sistema de Gestão | Impresso em ${new Date().toLocaleString('pt-BR')}`, data.settings.margin.left, docPdf.internal.pageSize.height - 6);
+        docPdf.text(str, docPdf.internal.pageSize.width - data.settings.margin.right, docPdf.internal.pageSize.height - 6, { align: 'right' });
+      }
+    });
+
+    docPdf.save(`Termo_Adiantamento_${func.nome.split(' ')[0]}_${mesFiltro}.pdf`);
+  };
+
+  // PDF TRANSPORTE
   const exportarPdfPixTransporte = () => {
     const docPdf = new jsPDF('p', 'mm', 'a4');
     const azulCorporativo = [30, 41, 59];
@@ -229,47 +385,6 @@ export default function GestaoFinanceira() {
     docPdf.save(`Relatorio_VT_${mesFiltro}.pdf`);
   };
 
-  // 🚀 PDF ADIANTAMENTOS VISUALMENTE MELHORADO
-  const exportarPdfValesEscritorio = () => {
-    const docPdf = new jsPDF('p', 'mm', 'a4');
-    const vermelhoCorporativo = [185, 28, 28];
-
-    try { docPdf.addImage(logoCarvalho, 'PNG', 14, 10, 30, 8); } catch(e){}
-
-    docPdf.setFont("helvetica", "bold"); docPdf.setFontSize(14); docPdf.setTextColor(vermelhoCorporativo[0], vermelhoCorporativo[1], vermelhoCorporativo[2]);
-    docPdf.text("RELATÓRIO DE DESCONTOS (VALES)", 105, 14, { align: 'center' });
-    
-    docPdf.setFontSize(9); docPdf.setTextColor(100);
-    docPdf.text(`Competência: ${mesFiltro.split('-').reverse().join('/')}`, 105, 19, { align: 'center' });
-    
-    docPdf.setLineWidth(0.4); docPdf.setDrawColor(vermelhoCorporativo[0], vermelhoCorporativo[1], vermelhoCorporativo[2]);
-    docPdf.line(14, 22, 196, 22);
-
-    const corpoTabela = funcionarios.map(func => {
-      const dados = dadosFinanceiros[func.id] || {};
-      const adiantamentos = dados.adiantamentos || [];
-      const totalFunc = adiantamentos.reduce((acc: number, curr: any) => acc + curr.valor, 0);
-
-      if (totalFunc > 0) {
-        const descricaoVales = adiantamentos.map((ad: any) => `• [${ad.data}] ${ad.motivo}: R$ ${ad.valor.toFixed(2)} ${ad.assinatura ? '(Assinado)' : ''}`).join('\n');
-        return [func.nome.toUpperCase(), descricaoVales, `R$ ${totalFunc.toFixed(2)}`];
-      }
-      return null;
-    }).filter(Boolean);
-
-    (docPdf as any).autoTable({ 
-      startY: 28, 
-      head: [["Colaborador", "Discriminação dos Adiantamentos", "Total a Descontar"]], 
-      body: corpoTabela, 
-      theme: 'grid', 
-      styles: { fontSize: 8.5, cellPadding: 4, valign: 'middle' }, 
-      headStyles: { fillColor: vermelhoCorporativo, textColor: 255 }, 
-      columnStyles: { 0: { fontStyle: 'bold', halign: 'left' }, 1: { halign: 'left' }, 2: { halign: 'center', fontStyle: 'bold', textColor: vermelhoCorporativo } } 
-    });
-    
-    docPdf.save(`Relatorio_Descontos_${mesFiltro}.pdf`);
-  };
-
   const funcionariosFiltrados = funcionarios.filter(f => f.nome.toLowerCase().includes(termoBusca.toLowerCase()));
 
   return (
@@ -299,7 +414,7 @@ export default function GestaoFinanceira() {
 
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <Button onClick={exportarPdfPixTransporte} style={{ backgroundColor: '#0f172a', display: 'flex', gap: '8px' }}><Download size={18}/> PDF - PIX e Transporte</Button>
-            <Button onClick={exportarPdfValesEscritorio} style={{ backgroundColor: '#b91c1c', display: 'flex', gap: '8px' }}><Download size={18}/> PDF - Vales Contabilidade</Button>
+            <Button onClick={exportarPdfValesEscritorio} style={{ backgroundColor: '#b91c1c', display: 'flex', gap: '8px' }}><Download size={18}/> PDF - Vales Escritório (Geral)</Button>
           </div>
         </div>
 
@@ -313,7 +428,6 @@ export default function GestaoFinanceira() {
             const totalPassagemDiario = func.valorPassagemDiarioPadrao || 0;
             const chavePixExibida = func.chavePixPadrao || '';
             
-            // 🚀 Aplicação dos Dias Úteis Personalizados
             const diasFuncionario = dadosFunc.diasUteisPersonalizado !== undefined ? dadosFunc.diasUteisPersonalizado : diasUteis;
             const totalPassagemCalculado = totalPassagemDiario * diasFuncionario;
 
@@ -324,9 +438,16 @@ export default function GestaoFinanceira() {
                     <div style={{ width: '40px', height: '40px', backgroundColor: '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={20} color="#475569" /></div>
                     <strong style={{ fontSize: '18px', color: '#1e293b' }}>{func.nome}</strong>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                    <QrCode size={16} color="#64748b" />
-                    <input type="text" placeholder="Chave PIX..." defaultValue={chavePixExibida} onBlur={(e) => salvarChavePix(func.id, e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '200px' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    {adiantamentos.length > 0 && (
+                      <Button onClick={() => exportarPdfTermoIndividual(func)} style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '12px', height: '35px', padding: '0 12px', gap: '6px' }}>
+                        <FileText size={14} /> Termo Individual PDF
+                      </Button>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                      <QrCode size={16} color="#64748b" />
+                      <input type="text" placeholder="Chave PIX..." defaultValue={chavePixExibida} onBlur={(e) => salvarChavePix(func.id, e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', width: '180px' }} />
+                    </div>
                   </div>
                 </div>
 
@@ -336,15 +457,12 @@ export default function GestaoFinanceira() {
                     {rotasFunc.length > 0 ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#334155' }}>
                         Custo Diário: <strong>R$ {totalPassagemDiario.toFixed(2)}</strong> | Previsto no Mês (Dias: 
-                        
-                        {/* 🚀 Input Dinâmico de Dias por Colaborador */}
                         <input 
                           type="number" 
                           value={diasFuncionario} 
                           onChange={(e) => salvarDiasPersonalizados(func.id, parseInt(e.target.value))} 
                           style={{ width: '40px', padding: '2px', textAlign: 'center', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold' }} 
                         />
-                        
                         ): <strong style={{ color: '#0ea5e9', fontSize: '15px' }}>R$ {totalPassagemCalculado.toFixed(2)}</strong>
                       </div>
                     ) : <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>Nenhuma rota configurada.</p>}
