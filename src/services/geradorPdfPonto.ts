@@ -213,9 +213,9 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
 
     const finalY = (docPdf as any).lastAutoTable.finalY + 6;
     
-    // Caixa de Resumo Mensal Otimizada
+    // Caixa de Resumo Mensal Otimizada (Altura aumentada para 28 para caber a terceira linha)
     docPdf.setFillColor(241, 245, 249);
-    docPdf.rect(14, finalY, 182, 22, "F");
+    docPdf.rect(14, finalY, 182, 28, "F");
     
     // Esquerda: Informações gerais de dias e faltas
     docPdf.setFontSize(9); docPdf.setFont("helvetica", "bold");
@@ -225,7 +225,7 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
     docPdf.text(`Dias Trabalhados: ${totalDiasTrabalhados}`, 18, finalY + 14);
     docPdf.text(`Faltas Acumuladas: ${totalFaltas}`, 18, finalY + 18);
 
-    // Direita: Atrasos em cima e Horas Extras em verde logo abaixo (Corrigido para evitar sinal duplo)
+    // Direita: Atrasos, Horas Extras e Saldo Final
     docPdf.setFontSize(8); docPdf.setFont("helvetica", "bold");
     docPdf.text("ATRASOS / DÉBITO:", 115, finalY + 8);
     
@@ -235,12 +235,30 @@ export const gerarFolhaDePontoPDF = async (mesExport: string, funcionarios: any[
     docPdf.setTextColor(0);
 
     docPdf.setFontSize(8); docPdf.setFont("helvetica", "bold");
-    docPdf.text("HORAS EXTRAS:", 115, finalY + 16);
+    docPdf.text("HORAS EXTRAS:", 115, finalY + 15);
     
-    docPdf.setTextColor(22, 163, 74); // Verde destacado
+    docPdf.setTextColor(22, 163, 74); // Verde
     docPdf.setFontSize(10);
-    docPdf.text(`+ ${formatarApenasHoras(totalExtrasMinutos)}`, 165, finalY + 16);
+    docPdf.text(`+ ${formatarApenasHoras(totalExtrasMinutos)}`, 165, finalY + 15);
     docPdf.setTextColor(0);
+
+    // TERCEIRO ELEMENTO: Cálculo e renderização do Saldo Final
+    const saldoTotalMinutos = totalExtrasMinutos - totalAtrasosMinutos;
+    docPdf.setFontSize(8); docPdf.setFont("helvetica", "bold");
+    docPdf.text("SALDO FINAL:", 115, finalY + 22);
+
+    docPdf.setFontSize(10);
+    if (saldoTotalMinutos > 0) {
+      docPdf.setTextColor(22, 163, 74); // Verde para saldo positivo
+      docPdf.text(`+ ${formatarApenasHoras(saldoTotalMinutos)}`, 165, finalY + 22);
+    } else if (saldoTotalMinutos < 0) {
+      docPdf.setTextColor(185, 28, 28); // Vermelho para saldo devedor
+      docPdf.text(`- ${formatarApenasHoras(saldoTotalMinutos)}`, 165, finalY + 22);
+    } else {
+      docPdf.setTextColor(71, 85, 105); // Cinza para saldo zerado
+      docPdf.text(`00:00`, 165, finalY + 22);
+    }
+    docPdf.setTextColor(0); // Reseta a cor
 
     if (i < funcionarios.length - 1) {
       docPdf.addPage();
